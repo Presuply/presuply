@@ -29,20 +29,39 @@ function CallbackHandler() {
 
   if (error) {
     return (
-      <main>
-        <p role="alert">{error}</p>
-        <a href="/login">Volver al login</a>
+      <main className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm space-y-4 text-center">
+          <p role="alert" className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+            {error}
+          </p>
+          <a
+            href="/login"
+            className="inline-block rounded-lg bg-gray-900 px-6 py-3 text-base font-semibold text-white hover:bg-gray-700 transition-colors"
+          >
+            Volver al login
+          </a>
+        </div>
       </main>
     )
   }
 
-  return <main><p>Verificando enlace...</p></main>
+  return (
+    <main className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <p className="text-sm text-gray-400 italic">Verificando enlace...</p>
+    </main>
+  )
 }
 
 // useSearchParams requiere Suspense en Next.js App Router
 export default function AuthCallbackPage() {
   return (
-    <Suspense fallback={<main><p>Cargando...</p></main>}>
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+          <p className="text-sm text-gray-400 italic">Cargando...</p>
+        </main>
+      }
+    >
       <CallbackHandler />
     </Suspense>
   )
