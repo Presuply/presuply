@@ -42,6 +42,7 @@ export interface Budget {
   total: number
   issued_date: string
   invoice_number: string | null
+  pdf_url: string | null
   notes: string | null
   valid_days: number | null
   created_at: string

@@ -55,6 +55,8 @@ export default function PresupuestoEditorPage() {
   const [lastChange, setLastChange] = useState(0)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [generatingPdf, setGeneratingPdf] = useState(false)
 
   const [budget, setBudget] = useState<BudgetHeader>({
     client_name: '',
@@ -93,6 +95,8 @@ export default function PresupuestoEditorPage() {
         .single()
 
       if (!b) { setLoading(false); return }
+
+      if (b.pdf_url) setPdfUrl(b.pdf_url)
 
       setBudget({
         client_name: b.client_name ?? '',
@@ -298,8 +302,113 @@ export default function PresupuestoEditorPage() {
     return () => clearTimeout(timer)
   }, [lastChange, dirty])
 
-  function handleGeneratePDF() {
-    window.open(`/dashboard/presupuesto/${id}/print`, '_blank')
+  async function handleGeneratePDF() {
+    setGeneratingPdf(true)
+    setSaveError(null)
+
+    try {
+      // 1. Obtener HTML del presupuesto
+      const res = await fetch('/api/generate-pdf-html', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budgetId: id }),
+      })
+      if (!res.ok) throw new Error('Error al generar el HTML')
+      const { html } = await res.json()
+
+      // 2. Extraer estilos y contenido del <body> para inyectar en el DOM
+      const styleBlocks = html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) ?? []
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+      const bodyContent = bodyMatch ? bodyMatch[1] : html
+
+      // 3. Contenedor fuera de pantalla — 794px = A4 a 96dpi
+      const container = document.createElement('div')
+      container.style.cssText =
+        'position:fixed;left:-9999px;top:0;width:794px;background:white;font-family:Arial,sans-serif;'
+      container.innerHTML = styleBlocks.join('\n') + bodyContent
+      document.body.appendChild(container)
+
+      // 4. Capturar con html2canvas
+      const { default: html2canvas } = await import('html2canvas')
+      const canvas = await html2canvas(container, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        width: 794,
+      })
+      document.body.removeChild(container)
+
+      // 5. Construir PDF A4 con paginación automática
+      const { jsPDF } = await import('jspdf')
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pdfWidth = pdf.internal.pageSize.getWidth()   // 210 mm
+      const pdfPageHeight = pdf.internal.pageSize.getHeight() // 297 mm
+      const imgWidth = pdfWidth
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      const imgData = canvas.toDataURL('image/jpeg', 0.95)
+
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight)
+      let heightLeft = imgHeight - pdfPageHeight
+      let page = 1
+      while (heightLeft > 0) {
+        pdf.addPage()
+        pdf.addImage(imgData, 'JPEG', 0, -(pdfPageHeight * page), imgWidth, imgHeight)
+        heightLeft -= pdfPageHeight
+        page++
+      }
+
+      const blob = pdf.output('blob')
+
+      // 6. Subir a Supabase Storage
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Sin sesión')
+
+      const storagePath = `${user.id}/${id}.pdf`
+      await supabase.storage.from('pdfs').upload(storagePath, blob, {
+        upsert: true,
+        contentType: 'application/pdf',
+      })
+
+      // 7. Guardar ruta en el presupuesto
+      await supabase.from('budgets').update({ pdf_url: storagePath }).eq('id', id)
+      setPdfUrl(storagePath)
+
+      // 8. Descarga automática desde el blob local (sin nueva petición a Storage)
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = `presupuesto-${budget.budget_number}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(objectUrl)
+
+    } catch (err) {
+      console.error('Error generando PDF:', err)
+      setSaveError('No se pudo generar el PDF. Inténtalo de nuevo.')
+    } finally {
+      setGeneratingPdf(false)
+    }
+  }
+
+  async function handleDownloadPDF() {
+    if (!pdfUrl) return
+    const supabase = createClient()
+    const { data } = await supabase.storage.from('pdfs').createSignedUrl(pdfUrl, 60)
+    if (!data?.signedUrl) return
+    // Fetch y descarga como blob para forzar descarga en vez de abrir en el navegador
+    const response = await fetch(data.signedUrl)
+    const blob = await response.blob()
+    const objectUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    a.download = `presupuesto-${budget.budget_number}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(objectUrl)
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -328,10 +437,11 @@ export default function PresupuestoEditorPage() {
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={handleGeneratePDF}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
+            disabled={generatingPdf}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
           >
-            PDF
+            {generatingPdf ? 'Generando...' : pdfUrl ? 'Descargar PDF' : 'PDF'}
           </button>
           <button
             type="button"
@@ -598,9 +708,13 @@ export default function PresupuestoEditorPage() {
             className="flex-1 rounded-xl bg-gray-900 px-4 py-4 text-base font-semibold text-white hover:bg-gray-700 disabled:opacity-40 transition-colors">
             {saving ? 'Guardando...' : 'Guardar borrador'}
           </button>
-          <button type="button" onClick={handleGeneratePDF}
-            className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-4 text-base font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
-            Generar PDF
+          <button
+            type="button"
+            onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
+            disabled={generatingPdf}
+            className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-4 text-base font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+          >
+            {generatingPdf ? 'Generando PDF...' : pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
           </button>
         </div>
 
