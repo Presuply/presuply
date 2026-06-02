@@ -10,6 +10,10 @@ export interface Profile {
   logo_url: string | null
   brand_color: string | null
   tax_rate: string
+  phone: string | null
+  iban: string | null
+  invoice_prefix: string | null
+  template_url: string | null
   plan: string
   created_at: string
   updated_at: string
@@ -21,12 +25,23 @@ export interface Budget {
   budget_number: number
   client_name: string | null
   client_email: string | null
+  client_address: string | null
+  client_phone: string | null
+  client_nif: string | null
   status: BudgetStatus
-  subtotal: number
+  tax_type: string
   tax_rate: number
+  subtotal: number
+  overhead_enabled: boolean
+  overhead_rate: number
+  profit_enabled: boolean
+  profit_rate: number
+  extras_description: string | null
+  extras_amount: number | null
   tax_amount: number
   total: number
   issued_date: string
+  invoice_number: string | null
   notes: string | null
   valid_days: number | null
   created_at: string

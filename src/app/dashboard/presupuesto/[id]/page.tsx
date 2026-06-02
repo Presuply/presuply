@@ -21,10 +21,21 @@ interface EditableLineItem {
 interface BudgetHeader {
   client_name: string
   client_email: string
+  client_address: string
+  client_phone: string
+  client_nif: string
   budget_number: number
+  tax_type: 'IGIC' | 'IVA'
   tax_rate: number
   valid_days: number
   issued_date: string
+  invoice_number: string
+  overhead_enabled: boolean
+  overhead_rate: number
+  profit_enabled: boolean
+  profit_rate: number
+  extras_description: string
+  extras_amount: number
 }
 
 const fmt = (n: number) =>
@@ -48,10 +59,21 @@ export default function PresupuestoEditorPage() {
   const [budget, setBudget] = useState<BudgetHeader>({
     client_name: '',
     client_email: '',
+    client_address: '',
+    client_phone: '',
+    client_nif: '',
     budget_number: 0,
+    tax_type: 'IGIC',
     tax_rate: 7,
     valid_days: 30,
     issued_date: new Date().toISOString().slice(0, 10),
+    invoice_number: '',
+    overhead_enabled: false,
+    overhead_rate: 13,
+    profit_enabled: false,
+    profit_rate: 6,
+    extras_description: '',
+    extras_amount: 0,
   })
 
   const [lineItems, setLineItems] = useState<EditableLineItem[]>([])
@@ -75,10 +97,21 @@ export default function PresupuestoEditorPage() {
       setBudget({
         client_name: b.client_name ?? '',
         client_email: b.client_email ?? '',
+        client_address: b.client_address ?? '',
+        client_phone: b.client_phone ?? '',
+        client_nif: b.client_nif ?? '',
         budget_number: b.budget_number,
+        tax_type: (b.tax_type === 'IVA' ? 'IVA' : 'IGIC') as 'IGIC' | 'IVA',
         tax_rate: Number(b.tax_rate),
         valid_days: b.valid_days ?? 30,
         issued_date: b.issued_date ?? new Date().toISOString().slice(0, 10),
+        invoice_number: b.invoice_number ?? '',
+        overhead_enabled: b.overhead_enabled ?? false,
+        overhead_rate: Number(b.overhead_rate) || 13,
+        profit_enabled: b.profit_enabled ?? false,
+        profit_rate: Number(b.profit_rate) || 6,
+        extras_description: b.extras_description ?? '',
+        extras_amount: Number(b.extras_amount) || 0,
       })
 
       const { data: items } = await supabase
@@ -111,8 +144,12 @@ export default function PresupuestoEditorPage() {
   // ── Totales ────────────────────────────────────────────────────────────────
   const visibleItems = lineItems.filter(i => !i._deleted)
   const subtotal = visibleItems.reduce((sum, i) => sum + i.total, 0)
-  const taxAmount = subtotal * (budget.tax_rate / 100)
-  const totalAmount = subtotal + taxAmount
+  const overhead = budget.overhead_enabled ? subtotal * (budget.overhead_rate / 100) : 0
+  const profit = budget.profit_enabled ? (subtotal + overhead) * (budget.profit_rate / 100) : 0
+  const extras = budget.extras_amount || 0
+  const baseImponible = subtotal + overhead + profit + extras
+  const taxAmount = baseImponible * (budget.tax_rate / 100)
+  const totalAmount = baseImponible + taxAmount
 
   // ── Helpers de estado ──────────────────────────────────────────────────────
   function markDirty() {
@@ -122,6 +159,11 @@ export default function PresupuestoEditorPage() {
 
   function updateBudgetField<K extends keyof BudgetHeader>(key: K, value: BudgetHeader[K]) {
     setBudget(prev => ({ ...prev, [key]: value }))
+    markDirty()
+  }
+
+  function handleTaxTypeChange(taxType: 'IGIC' | 'IVA') {
+    setBudget(prev => ({ ...prev, tax_type: taxType, tax_rate: taxType === 'IGIC' ? 7 : 21 }))
     markDirty()
   }
 
@@ -174,9 +216,20 @@ export default function PresupuestoEditorPage() {
       .update({
         client_name: budget.client_name || null,
         client_email: budget.client_email || null,
+        client_address: budget.client_address || null,
+        client_phone: budget.client_phone || null,
+        client_nif: budget.client_nif || null,
+        tax_type: budget.tax_type,
         tax_rate: budget.tax_rate,
         valid_days: budget.valid_days,
         issued_date: budget.issued_date,
+        invoice_number: budget.invoice_number || null,
+        overhead_enabled: budget.overhead_enabled,
+        overhead_rate: budget.overhead_rate,
+        profit_enabled: budget.profit_enabled,
+        profit_rate: budget.profit_rate,
+        extras_description: budget.extras_description || null,
+        extras_amount: budget.extras_amount,
         subtotal,
         tax_amount: taxAmount,
         total: totalAmount,
@@ -189,12 +242,10 @@ export default function PresupuestoEditorPage() {
       return
     }
 
-    // Eliminar partidas marcadas (solo las que ya están en DB)
     for (const item of lineItems.filter(i => i._deleted && !i._isNew)) {
       await supabase.from('line_items').delete().eq('id', item.id)
     }
 
-    // Insertar partidas nuevas
     for (const item of lineItems.filter(i => i._isNew && !i._deleted)) {
       const { data: inserted } = await supabase
         .from('line_items')
@@ -219,7 +270,6 @@ export default function PresupuestoEditorPage() {
       }
     }
 
-    // Actualizar partidas existentes
     for (const item of lineItems.filter(i => !i._isNew && !i._deleted)) {
       await supabase
         .from('line_items')
@@ -239,11 +289,9 @@ export default function PresupuestoEditorPage() {
     setSaving(false)
   }
 
-  // Ref para que el autosave siempre llame a la versión más reciente
   const handleSaveRef = useRef(handleSave)
   useEffect(() => { handleSaveRef.current = handleSave })
 
-  // Autosave: 30 s tras el último cambio
   useEffect(() => {
     if (!dirty) return
     const timer = setTimeout(() => handleSaveRef.current(), 30000)
@@ -251,10 +299,7 @@ export default function PresupuestoEditorPage() {
   }, [lastChange, dirty])
 
   function handleGeneratePDF() {
-    console.log('Etapa 6 — datos para el PDF:', {
-      budget: { ...budget, id, subtotal, taxAmount, total: totalAmount },
-      lineItems: visibleItems,
-    })
+    window.open(`/dashboard/presupuesto/${id}/print`, '_blank')
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -301,59 +346,67 @@ export default function PresupuestoEditorPage() {
 
       <div className="px-4 py-6 max-w-4xl mx-auto space-y-6">
 
-        {/* Cabecera del presupuesto */}
+        {/* Datos del presupuesto */}
         <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 space-y-4">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Datos del presupuesto
-          </h2>
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Datos del presupuesto</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500">Cliente</label>
-              <input
-                type="text"
-                value={budget.client_name}
-                onChange={e => updateBudgetField('client_name', e.target.value)}
-                placeholder="Nombre del cliente"
-                className={inputClass}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500">Email del cliente</label>
-              <input
-                type="email"
-                value={budget.client_email}
-                onChange={e => updateBudgetField('client_email', e.target.value)}
-                placeholder="cliente@email.com"
-                className={inputClass}
-              />
-            </div>
-            <div className="space-y-1">
               <label className="block text-xs font-medium text-gray-500">Fecha</label>
-              <input
-                type="date"
-                value={budget.issued_date}
-                onChange={e => updateBudgetField('issued_date', e.target.value)}
-                className={inputClass}
-              />
+              <input type="date" value={budget.issued_date}
+                onChange={e => updateBudgetField('issued_date', e.target.value)} className={inputClass} />
             </div>
             <div className="space-y-1">
               <label className="block text-xs font-medium text-gray-500">Validez (días)</label>
-              <input
-                type="number"
-                value={budget.valid_days}
-                min={1}
-                onChange={e => updateBudgetField('valid_days', Number(e.target.value))}
-                className={inputClass}
-              />
+              <input type="number" value={budget.valid_days} min={1}
+                onChange={e => updateBudgetField('valid_days', Number(e.target.value))} className={inputClass} />
             </div>
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500">Nº presupuesto</label>
-              <input
-                type="text"
-                value={budget.budget_number}
-                disabled
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400"
-              />
+              <label className="block text-xs font-medium text-gray-500">Nº presupuesto (auto)</label>
+              <input type="text" value={budget.budget_number} disabled
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400" />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-500">Nº factura / referencia</label>
+              <input type="text" value={budget.invoice_number}
+                onChange={e => updateBudgetField('invoice_number', e.target.value)}
+                placeholder="Ej. 26/001" className={inputClass} />
+            </div>
+          </div>
+        </section>
+
+        {/* Datos del cliente */}
+        <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 space-y-4">
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Datos del cliente</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-500">Nombre / empresa</label>
+              <input type="text" value={budget.client_name}
+                onChange={e => updateBudgetField('client_name', e.target.value)}
+                placeholder="Nombre del cliente" className={inputClass} />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-500">NIF / CIF</label>
+              <input type="text" value={budget.client_nif}
+                onChange={e => updateBudgetField('client_nif', e.target.value)}
+                placeholder="12345678A" className={inputClass} />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-500">Email</label>
+              <input type="email" value={budget.client_email}
+                onChange={e => updateBudgetField('client_email', e.target.value)}
+                placeholder="cliente@email.com" className={inputClass} />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-500">Teléfono</label>
+              <input type="tel" value={budget.client_phone}
+                onChange={e => updateBudgetField('client_phone', e.target.value)}
+                placeholder="600 000 000" className={inputClass} />
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <label className="block text-xs font-medium text-gray-500">Dirección</label>
+              <input type="text" value={budget.client_address}
+                onChange={e => updateBudgetField('client_address', e.target.value)}
+                placeholder="Calle, número, localidad" className={inputClass} />
             </div>
           </div>
         </section>
@@ -374,60 +427,36 @@ export default function PresupuestoEditorPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {visibleItems.map(item => (
-                  <tr
-                    key={item.id}
-                    className={item.confidence === 'baja'
-                      ? 'bg-yellow-50 border-l-4 border-yellow-400'
-                      : ''}
-                  >
+                  <tr key={item.id}
+                    className={item.confidence === 'baja' ? 'bg-yellow-50 border-l-4 border-yellow-400' : ''}>
                     <td className="px-3 py-2">
-                      <input
-                        type="text"
-                        value={item.description}
+                      <input type="text" value={item.description}
                         onChange={e => updateItem(item.id, 'description', e.target.value)}
                         placeholder="Descripción"
-                        className="w-full min-w-[160px] bg-transparent px-1 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
-                      />
+                        className="w-full min-w-[160px] bg-transparent px-1 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 rounded" />
                     </td>
                     <td className="px-3 py-2">
-                      <input
-                        type="text"
-                        value={item.unit}
+                      <input type="text" value={item.unit}
                         onChange={e => updateItem(item.id, 'unit', e.target.value)}
                         placeholder="ud"
-                        className="w-14 bg-transparent px-1 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
-                      />
+                        className="w-14 bg-transparent px-1 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 rounded" />
                     </td>
                     <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        value={item.quantity}
-                        min={0}
-                        step="any"
+                      <input type="number" value={item.quantity} min={0} step="any"
                         onChange={e => updateItem(item.id, 'quantity', Number(e.target.value))}
-                        className="w-20 bg-transparent px-1 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
-                      />
+                        className="w-20 bg-transparent px-1 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-gray-400 rounded" />
                     </td>
                     <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        value={item.unit_price}
-                        min={0}
-                        step="any"
+                      <input type="number" value={item.unit_price} min={0} step="any"
                         onChange={e => updateItem(item.id, 'unit_price', Number(e.target.value))}
-                        className="w-24 bg-transparent px-1 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-gray-400 rounded"
-                      />
+                        className="w-24 bg-transparent px-1 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-gray-400 rounded" />
                     </td>
                     <td className="px-3 py-2 text-right font-medium text-gray-900 whitespace-nowrap">
                       {fmt(item.total)} €
                     </td>
                     <td className="px-3 py-2">
-                      <button
-                        type="button"
-                        onClick={() => deleteItem(item.id)}
-                        aria-label="Eliminar partida"
-                        className="flex items-center justify-center w-6 h-6 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                      >
+                      <button type="button" onClick={() => deleteItem(item.id)} aria-label="Eliminar partida"
+                        className="flex items-center justify-center w-6 h-6 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
                         ✕
                       </button>
                     </td>
@@ -437,25 +466,117 @@ export default function PresupuestoEditorPage() {
             </table>
           </div>
           <div className="px-4 py-3 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={addItem}
-              className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
-            >
+            <button type="button" onClick={addItem}
+              className="text-sm text-gray-500 hover:text-gray-900 transition-colors">
               + Añadir partida
             </button>
           </div>
         </section>
 
-        {/* Totales */}
+        {/* Impuesto y costes adicionales */}
+        <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 space-y-4">
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Impuesto y costes adicionales</h2>
+
+          {/* IGIC / IVA */}
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-gray-500">Tipo de impuesto</label>
+            <div className="flex gap-4">
+              {(['IGIC', 'IVA'] as const).map(t => (
+                <label key={t} className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="tax_type" value={t}
+                    checked={budget.tax_type === t}
+                    onChange={() => handleTaxTypeChange(t)}
+                    className="accent-gray-900" />
+                  <span className="text-sm text-gray-700">
+                    {t} ({t === 'IGIC' ? '7' : '21'}%)
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Gastos generales */}
+          <div className="flex items-center gap-3">
+            <input type="checkbox" id="overhead" checked={budget.overhead_enabled}
+              onChange={e => updateBudgetField('overhead_enabled', e.target.checked)}
+              className="accent-gray-900 w-4 h-4" />
+            <label htmlFor="overhead" className="text-sm text-gray-700 flex-1 cursor-pointer">
+              Gastos generales
+            </label>
+            <div className="flex items-center gap-1">
+              <input type="number" value={budget.overhead_rate} min={0} max={100} step="0.01"
+                disabled={!budget.overhead_enabled}
+                onChange={e => updateBudgetField('overhead_rate', Number(e.target.value))}
+                className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              <span className="text-sm text-gray-500">%</span>
+            </div>
+          </div>
+
+          {/* Beneficio industrial */}
+          <div className="flex items-center gap-3">
+            <input type="checkbox" id="profit" checked={budget.profit_enabled}
+              onChange={e => updateBudgetField('profit_enabled', e.target.checked)}
+              className="accent-gray-900 w-4 h-4" />
+            <label htmlFor="profit" className="text-sm text-gray-700 flex-1 cursor-pointer">
+              Beneficio industrial
+            </label>
+            <div className="flex items-center gap-1">
+              <input type="number" value={budget.profit_rate} min={0} max={100} step="0.01"
+                disabled={!budget.profit_enabled}
+                onChange={e => updateBudgetField('profit_rate', Number(e.target.value))}
+                className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              <span className="text-sm text-gray-500">%</span>
+            </div>
+          </div>
+
+          {/* Extras */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2 space-y-1">
+              <label className="block text-xs font-medium text-gray-500">Extras fuera de presupuesto (descripción)</label>
+              <input type="text" value={budget.extras_description}
+                onChange={e => updateBudgetField('extras_description', e.target.value)}
+                placeholder="Ej. Gestión de residuos" className={inputClass} />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-500">Importe (€)</label>
+              <input type="number" value={budget.extras_amount} min={0} step="0.01"
+                onChange={e => updateBudgetField('extras_amount', Number(e.target.value))}
+                className={inputClass} />
+            </div>
+          </div>
+        </section>
+
+        {/* Resumen de precios */}
         <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <div className="space-y-2 text-sm">
             <div className="flex justify-between text-gray-600">
-              <span>Subtotal</span>
+              <span>Presupuesto de ejecución material</span>
               <span>{fmt(subtotal)} €</span>
             </div>
+            {budget.overhead_enabled && (
+              <div className="flex justify-between text-gray-600">
+                <span>Gastos generales ({budget.overhead_rate}%)</span>
+                <span>{fmt(overhead)} €</span>
+              </div>
+            )}
+            {budget.profit_enabled && (
+              <div className="flex justify-between text-gray-600">
+                <span>Beneficio industrial ({budget.profit_rate}%)</span>
+                <span>{fmt(profit)} €</span>
+              </div>
+            )}
+            {extras > 0 && (
+              <div className="flex justify-between text-gray-600">
+                <span>{budget.extras_description || 'Extras'}</span>
+                <span>{fmt(extras)} €</span>
+              </div>
+            )}
+            <div className="flex justify-between text-gray-700 font-medium pt-1 border-t border-gray-100">
+              <span>Base imponible</span>
+              <span>{fmt(baseImponible)} €</span>
+            </div>
             <div className="flex justify-between text-gray-600">
-              <span>IGIC ({budget.tax_rate}%)</span>
+              <span>{budget.tax_type} ({budget.tax_rate}%)</span>
               <span>{fmt(taxAmount)} €</span>
             </div>
             <div className="flex justify-between font-semibold text-gray-900 text-base pt-2 border-t border-gray-200">
@@ -473,19 +594,12 @@ export default function PresupuestoEditorPage() {
 
         {/* Botones móvil */}
         <div className="flex flex-col sm:flex-row gap-3 pb-8">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 rounded-xl bg-gray-900 px-4 py-4 text-base font-semibold text-white hover:bg-gray-700 disabled:opacity-40 transition-colors"
-          >
+          <button type="button" onClick={handleSave} disabled={saving}
+            className="flex-1 rounded-xl bg-gray-900 px-4 py-4 text-base font-semibold text-white hover:bg-gray-700 disabled:opacity-40 transition-colors">
             {saving ? 'Guardando...' : 'Guardar borrador'}
           </button>
-          <button
-            type="button"
-            onClick={handleGeneratePDF}
-            className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-4 text-base font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
-          >
+          <button type="button" onClick={handleGeneratePDF}
+            className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-4 text-base font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
             Generar PDF
           </button>
         </div>

@@ -77,12 +77,20 @@ export default function DashboardPage() {
 
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">Presupuestos</h1>
-          <Link
-            href="/dashboard/nuevo"
-            className="rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white hover:bg-gray-700 transition-colors"
-          >
-            + Nuevo
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/dashboard/perfil"
+              className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              Mi perfil
+            </Link>
+            <Link
+              href="/dashboard/nuevo"
+              className="rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white hover:bg-gray-700 transition-colors"
+            >
+              + Nuevo
+            </Link>
+          </div>
         </div>
 
         {loading ? (
