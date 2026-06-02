@@ -17,6 +17,8 @@ export default function NuevoPresupuestoPage() {
   const [uploads, setUploads] = useState<UploadedFile[]>([])
   const [text, setText] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [extracting, setExtracting] = useState(false)
+  const [extracted, setExtracted] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Evita crear dos drafts en React Strict Mode (doble ejecución de efectos en dev)
   const creatingRef = useRef(false)
@@ -116,8 +118,36 @@ export default function NuevoPresupuestoPage() {
     setUploads((prev) => prev.filter((u) => u.id !== upload.id))
   }
 
-  function handleGenerate() {
-    console.log('Etapa 4 — datos a enviar a Claude:', { budgetId, uploads, text })
+  async function handleGenerate() {
+    if (!budgetId) return
+    setExtracting(true)
+    setExtracted(null)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          budgetId,
+          uploadPaths: uploads.map((u) => u.storagePath),
+          text: text.trim() || undefined,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error ?? 'Error al generar el presupuesto. Inténtalo de nuevo.')
+      } else {
+        console.log('Partidas extraídas (Etapa 5 mostrará el editor):', data)
+        setExtracted(data.partidas?.length ?? 0)
+      }
+    } catch {
+      setError('No se pudo conectar con el servidor. Inténtalo de nuevo.')
+    } finally {
+      setExtracting(false)
+    }
   }
 
   const canGenerate = uploads.length > 0 || text.trim().length > 0
@@ -220,13 +250,21 @@ export default function NuevoPresupuestoPage() {
           </p>
         )}
 
+        {extracted !== null && (
+          <p className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+            {extracted === 0
+              ? 'No se detectaron partidas. Revisa las fotos o añade texto.'
+              : `${extracted} partida${extracted === 1 ? '' : 's'} detectada${extracted === 1 ? '' : 's'}. El editor llegará en la próxima etapa.`}
+          </p>
+        )}
+
         <button
           type="button"
           onClick={handleGenerate}
-          disabled={!canGenerate || uploading}
+          disabled={!canGenerate || uploading || extracting}
           className="w-full rounded-xl bg-gray-900 px-4 py-4 text-base font-semibold text-white hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          Generar presupuesto
+          {extracting ? 'Analizando con IA...' : 'Generar presupuesto'}
         </button>
 
       </div>
