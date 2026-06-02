@@ -18,7 +18,6 @@ export default function NuevoPresupuestoPage() {
   const [text, setText] = useState('')
   const [uploading, setUploading] = useState(false)
   const [extracting, setExtracting] = useState(false)
-  const [extracted, setExtracted] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Evita crear dos drafts en React Strict Mode (doble ejecución de efectos en dev)
   const creatingRef = useRef(false)
@@ -121,7 +120,6 @@ export default function NuevoPresupuestoPage() {
   async function handleGenerate() {
     if (!budgetId) return
     setExtracting(true)
-    setExtracted(null)
     setError(null)
 
     try {
@@ -139,13 +137,12 @@ export default function NuevoPresupuestoPage() {
 
       if (!response.ok) {
         setError(data.error ?? 'Error al generar el presupuesto. Inténtalo de nuevo.')
+        setExtracting(false)
       } else {
-        console.log('Partidas extraídas (Etapa 5 mostrará el editor):', data)
-        setExtracted(data.partidas?.length ?? 0)
+        router.push(`/dashboard/presupuesto/${budgetId}`)
       }
     } catch {
       setError('No se pudo conectar con el servidor. Inténtalo de nuevo.')
-    } finally {
       setExtracting(false)
     }
   }
@@ -250,15 +247,7 @@ export default function NuevoPresupuestoPage() {
           </p>
         )}
 
-        {extracted !== null && (
-          <p className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
-            {extracted === 0
-              ? 'No se detectaron partidas. Revisa las fotos o añade texto.'
-              : `${extracted} partida${extracted === 1 ? '' : 's'} detectada${extracted === 1 ? '' : 's'}. El editor llegará en la próxima etapa.`}
-          </p>
-        )}
-
-        <button
+<button
           type="button"
           onClick={handleGenerate}
           disabled={!canGenerate || uploading || extracting}

@@ -209,6 +209,48 @@ export async function POST(request: Request) {
       )
     }
 
+    // 7. Guardar partidas en line_items y actualizar el budget
+    const extracted = parsed as {
+      cliente_detectado?: string | null
+      notas?: string | null
+      partidas?: Array<{
+        descripcion: string
+        unidad: string | null
+        cantidad: number
+        precio_unitario: number
+        total: number
+        confianza: string
+      }>
+    }
+
+    const partidas = Array.isArray(extracted.partidas) ? extracted.partidas : []
+
+    if (partidas.length > 0) {
+      await supabase.from('line_items').insert(
+        partidas.map((p, index) => ({
+          budget_id: budgetId,
+          user_id: user.id,
+          description: p.descripcion ?? '',
+          unit: p.unidad ?? null,
+          quantity: Number(p.cantidad) || 0,
+          unit_price: Number(p.precio_unitario) || 0,
+          total: Number(p.total) || 0,
+          confidence: (['alta', 'media', 'baja'].includes(p.confianza)
+            ? p.confianza
+            : null) as 'alta' | 'media' | 'baja' | null,
+          position: index,
+        }))
+      )
+    }
+
+    if (extracted.cliente_detectado) {
+      await supabase
+        .from('budgets')
+        .update({ client_name: extracted.cliente_detectado })
+        .eq('id', budgetId)
+        .eq('user_id', user.id)
+    }
+
     return NextResponse.json(parsed)
 
   } catch (error) {

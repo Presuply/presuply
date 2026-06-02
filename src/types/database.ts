@@ -26,6 +26,7 @@ export interface Budget {
   tax_rate: number
   tax_amount: number
   total: number
+  issued_date: string
   notes: string | null
   valid_days: number | null
   created_at: string

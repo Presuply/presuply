@@ -1,0 +1,2 @@
+ALTER TABLE budgets
+ADD COLUMN issued_date date NOT NULL DEFAULT CURRENT_DATE;
