@@ -11,7 +11,8 @@ const btnPrimary =
 
 export default function RegisterPage() {
   const supabaseConfigured = Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)
   )
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -25,7 +26,7 @@ export default function RegisterPage() {
     setError(null)
 
     if (!supabaseConfigured) {
-      setError('Falta configurar Supabase (NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY).')
+      setError('Falta configurar Supabase (NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY o NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY).')
       setLoading(false)
       return
     }
