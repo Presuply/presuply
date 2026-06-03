@@ -8,7 +8,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   const [checking, setChecking] = useState(true)
   const supabaseConfigured = Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)
   )
 
   useEffect(() => {
@@ -34,7 +35,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="w-full max-w-md space-y-4">
           <h1 className="text-2xl font-bold text-gray-900">Falta configurar Supabase</h1>
           <p className="text-sm text-gray-600">
-            Define NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en tu entorno para acceder al dashboard.
+            Define NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY (o NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)
+            en tu entorno para acceder al dashboard.
           </p>
           <a
             href="/"

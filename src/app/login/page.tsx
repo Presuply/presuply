@@ -13,7 +13,8 @@ const btnPrimary =
 export default function LoginPage() {
   const router = useRouter()
   const supabaseConfigured = Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)
   )
 
   const [email, setEmail] = useState('')
@@ -31,7 +32,7 @@ export default function LoginPage() {
     setError(null)
 
     if (!supabaseConfigured) {
-      setError('Falta configurar Supabase (NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY).')
+      setError('Falta configurar Supabase (NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY o NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY).')
       setLoading(false)
       return
     }
@@ -58,7 +59,7 @@ export default function LoginPage() {
     setPwdError(null)
 
     if (!supabaseConfigured) {
-      setPwdError('Falta configurar Supabase (NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY).')
+      setPwdError('Falta configurar Supabase (NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY o NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY).')
       setPwdLoading(false)
       return
     }
