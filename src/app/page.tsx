@@ -4,7 +4,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 py-12 text-center">
       <h1 className="text-4xl font-bold tracking-tight text-gray-900">
-        Presupuestos App
+        Presuply
       </h1>
       <p className="mt-4 text-lg text-gray-500 max-w-sm">
         Haz una foto a tu libreta o pega un mensaje de WhatsApp. Obtén un
