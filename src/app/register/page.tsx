@@ -10,6 +10,9 @@ const btnPrimary =
   'w-full rounded-lg bg-gray-900 px-4 py-3 text-base font-semibold text-white hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors'
 
 export default function RegisterPage() {
+  const supabaseConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  )
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -20,6 +23,12 @@ export default function RegisterPage() {
     e.preventDefault()
     setLoading(true)
     setError(null)
+
+    if (!supabaseConfigured) {
+      setError('Falta configurar Supabase (NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY).')
+      setLoading(false)
+      return
+    }
 
     const supabase = createClient()
     const { error } = await supabase.auth.signUp({
@@ -62,6 +71,16 @@ export default function RegisterPage() {
           Crear cuenta <span className="text-sm font-normal text-gray-400">(desarrollo)</span>
         </h1>
 
+        {!supabaseConfigured && (
+          <p
+            role="alert"
+            className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800"
+          >
+            Falta configurar Supabase. Define NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en tu
+            entorno para poder registrarte.
+          </p>
+        )}
+
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <form onSubmit={handleSubmit} className="space-y-3">
             <input
@@ -82,7 +101,7 @@ export default function RegisterPage() {
               required
               className={inputClass}
             />
-            <button type="submit" disabled={loading} className={btnPrimary}>
+            <button type="submit" disabled={loading || !supabaseConfigured} className={btnPrimary}>
               {loading ? 'Creando...' : 'Crear cuenta'}
             </button>
             {error && (

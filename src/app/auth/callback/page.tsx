@@ -8,12 +8,20 @@ function CallbackHandler() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
+  const supabaseConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  )
 
   useEffect(() => {
     const code = searchParams.get('code')
 
     if (!code) {
       router.replace('/login')
+      return
+    }
+
+    if (!supabaseConfigured) {
+      setError('Falta configurar Supabase (NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY).')
       return
     }
 
@@ -25,7 +33,7 @@ function CallbackHandler() {
         router.replace('/dashboard')
       }
     })
-  }, [searchParams, router])
+  }, [searchParams, router, supabaseConfigured])
 
   if (error) {
     return (

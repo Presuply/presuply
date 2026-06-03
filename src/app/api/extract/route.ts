@@ -1,4 +1,4 @@
-export const runtime = 'edge'
+export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
@@ -83,6 +83,9 @@ function toValidMediaType(contentType: string | null): ValidMediaType {
 // Edge-compatible base64 encoding — procesa en chunks para evitar stack overflow
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(bytes).toString('base64')
+  }
   let binary = ''
   const chunkSize = 8192
   for (let i = 0; i < bytes.length; i += chunkSize) {
