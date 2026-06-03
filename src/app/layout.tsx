@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Presupuestos App",
+  title: "Presuply",
   description: "Genera presupuestos profesionales desde una foto",
 };
 

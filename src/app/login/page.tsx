@@ -12,6 +12,10 @@ const btnPrimary =
 
 export default function LoginPage() {
   const router = useRouter()
+  const supabaseConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)
+  )
 
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
@@ -26,6 +30,12 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError(null)
+
+    if (!supabaseConfigured) {
+      setError('Falta configurar Supabase (NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY o NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY).')
+      setLoading(false)
+      return
+    }
 
     const supabase = createClient()
     const { error } = await supabase.auth.signInWithOtp({
@@ -47,6 +57,12 @@ export default function LoginPage() {
     e.preventDefault()
     setPwdLoading(true)
     setPwdError(null)
+
+    if (!supabaseConfigured) {
+      setPwdError('Falta configurar Supabase (NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY o NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY).')
+      setPwdLoading(false)
+      return
+    }
 
     const supabase = createClient()
     const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -79,6 +95,16 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-6">
         <h1 className="text-2xl font-bold text-gray-900 text-center">Acceder</h1>
 
+        {!supabaseConfigured && (
+          <p
+            role="alert"
+            className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800"
+          >
+            Falta configurar Supabase. Define NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en tu
+            entorno para poder iniciar sesión.
+          </p>
+        )}
+
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
           <form onSubmit={handleMagicLink} className="space-y-3">
             <input
@@ -90,7 +116,7 @@ export default function LoginPage() {
               autoFocus
               className={inputClass}
             />
-            <button type="submit" disabled={loading} className={btnPrimary}>
+            <button type="submit" disabled={loading || !supabaseConfigured} className={btnPrimary}>
               {loading ? 'Enviando...' : 'Enviar enlace de acceso'}
             </button>
             {error && (
@@ -127,7 +153,7 @@ export default function LoginPage() {
                 required
                 className={inputClass}
               />
-              <button type="submit" disabled={pwdLoading} className={btnPrimary}>
+              <button type="submit" disabled={pwdLoading || !supabaseConfigured} className={btnPrimary}>
                 {pwdLoading ? 'Entrando...' : 'Entrar con contraseña'}
               </button>
               {pwdError && (
