@@ -136,6 +136,10 @@ export default function NuevoPresupuestoPage() {
       const data = await response.json()
 
       if (!response.ok) {
+        if (data.error === 'trial_exhausted') {
+          router.push('/pricing')
+          return
+        }
         setError(data.error ?? 'Error al generar el presupuesto. Inténtalo de nuevo.')
         setExtracting(false)
       } else {
@@ -151,43 +155,40 @@ export default function NuevoPresupuestoPage() {
 
   if (!budgetId) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <p className="text-sm text-gray-400 italic">Iniciando presupuesto...</p>
+      <main className="min-h-screen bg-[#F4F6F9] dark:bg-[#0D1B2A] flex items-center justify-center px-4">
+        <p className="text-sm text-[#A9B5C2] italic">Iniciando presupuesto...</p>
       </main>
     )
   }
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-[#F4F6F9] dark:bg-[#0D1B2A]">
       {/* Cabecera */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center gap-3">
-        <a
-          href="/dashboard"
-          className="text-gray-400 hover:text-gray-900 transition-colors text-sm"
-        >
+      <div className="bg-white dark:bg-[#1B2A3A] border-b border-[#D5DCE4] dark:border-[#3A4A5C] px-4 py-4 flex items-center gap-3">
+        <a href="/dashboard" className="text-[#6B7B8C] hover:text-[#FF6A00] transition-colors text-sm">
           ← Volver
         </a>
-        <h1 className="text-lg font-semibold text-gray-900">Nuevo presupuesto</h1>
+        <h1 className="text-lg font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">Nuevo presupuesto</h1>
       </div>
 
       <div className="px-4 py-6 max-w-xl mx-auto space-y-6">
 
         {/* Zona de fotos */}
         <section className="space-y-3">
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9]">
             Fotos de la obra o libreta
           </label>
 
           <label
             htmlFor="fotos"
-            className={`flex items-center justify-center w-full rounded-xl border-2 border-dashed px-4 py-6 text-sm font-medium cursor-pointer transition-colors ${
+            className={`flex items-center justify-center w-full rounded-[12px] border-2 border-dashed px-4 py-6 text-sm font-semibold cursor-pointer transition-colors ${
               uploading
-                ? 'border-gray-200 text-gray-400 cursor-not-allowed'
-                : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:bg-gray-50 active:bg-gray-100'
+                ? 'border-[#D5DCE4] dark:border-[#3A4A5C] text-[#A9B5C2] cursor-not-allowed'
+                : 'border-[#D5DCE4] dark:border-[#3A4A5C] text-[#6B7B8C] hover:border-[#FF6A00] hover:text-[#FF6A00]'
             }`}
           >
             {uploading ? (
-              <span className="italic text-gray-400">Subiendo foto...</span>
+              <span className="italic text-[#A9B5C2]">Subiendo foto...</span>
             ) : (
               '+ Añadir fotos'
             )}
@@ -205,7 +206,7 @@ export default function NuevoPresupuestoPage() {
           {uploads.length > 0 && (
             <ul className="grid grid-cols-3 gap-2">
               {uploads.map((u) => (
-                <li key={u.id} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100">
+                <li key={u.id} className="relative aspect-square rounded-[12px] overflow-hidden bg-[#EDF0F4] dark:bg-[#3A4A5C]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={u.previewUrl}
@@ -228,7 +229,7 @@ export default function NuevoPresupuestoPage() {
 
         {/* Texto / WhatsApp */}
         <section className="space-y-2">
-          <label htmlFor="notas" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="notas" className="block text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9]">
             Notas o texto de WhatsApp
           </label>
           <textarea
@@ -237,21 +238,21 @@ export default function NuevoPresupuestoPage() {
             onChange={(e) => setText(e.target.value)}
             placeholder="Pega aquí el mensaje de WhatsApp o escribe las notas del trabajo..."
             rows={6}
-            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none"
+            className="w-full bg-[#F4F6F9] dark:bg-[#0D1B2A] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] placeholder:text-[#A9B5C2] rounded-[12px] px-4 py-3 text-base focus:outline-none focus:border-[#FF6A00] resize-none transition-colors"
           />
         </section>
 
         {error && (
-          <p role="alert" className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          <p role="alert" className="rounded-[8px] bg-red-50 dark:bg-red-900/20 border border-[#E5484D]/40 px-4 py-3 text-sm text-[#E5484D]">
             {error}
           </p>
         )}
 
-<button
+        <button
           type="button"
           onClick={handleGenerate}
           disabled={!canGenerate || uploading || extracting}
-          className="w-full rounded-xl bg-gray-900 px-4 py-4 text-base font-semibold text-white hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {extracting ? 'Analizando con IA...' : 'Generar presupuesto'}
         </button>

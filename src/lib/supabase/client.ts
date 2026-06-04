@@ -12,6 +12,9 @@ export function createClient() {
   }
   return createBrowserClient(
     supabaseUrl,
-    supabaseAnonKey
+    supabaseAnonKey,
+    {
+      cookies: { encode: "tokens-only" },
+    }
   );
 }

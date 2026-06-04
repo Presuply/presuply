@@ -1,20 +1,89 @@
 @import "tailwindcss";
 
+/* Modo oscuro con clase en <html> en lugar de prefers-color-scheme */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Tokens de fuentes para Tailwind ── */
+@theme {
+  --font-display: var(--font-syne, 'Syne', sans-serif);
+  --font-sans: var(--font-montserrat, 'Montserrat', Arial, sans-serif);
+}
+
+/* ── Variables de diseño Presuply ── */
 :root {
   color-scheme: light;
-  --background: #ffffff;
-  --foreground: #111827;
+
+  /* Brand */
+  --color-primary:       #FF6A00;
+  --color-primary-hover: #FF9248;
+  --color-primary-dark:  #CC5500;
+
+  /* Backgrounds */
+  --color-bg-app:   #F4F6F9;
+  --color-bg-card:  #FFFFFF;
+  --color-bg-input: #F4F6F9;
+
+  /* Text */
+  --color-text:           #0D1B2A;
+  --color-text-secondary: #6B7B8C;
+  --color-text-muted:     #A9B5C2;
+
+  /* Borders / dividers */
+  --color-border: #D5DCE4;
+
+  /* Semantic */
+  --color-success: #1FB57A;
+  --color-warning: #F5A623;
+  --color-error:   #E5484D;
+  --color-info:    #3E7BFA;
+
+  /* Palette */
+  --color-dark-navy:  #0D1B2A;
+  --color-card-dark:  #1B2A3A;
+  --color-slate:      #3A4A5C;
+  --color-steel:      #6B7B8C;
+  --color-mist:       #A9B5C2;
+  --color-haze:       #D5DCE4;
+  --color-bone:       #EDF0F4;
+  --color-fog:        #F4F6F9;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ── Variables en modo oscuro ── */
+.dark {
+  color-scheme: dark;
+
+  --color-bg-app:   #0D1B2A;
+  --color-bg-card:  #1B2A3A;
+  --color-bg-input: #0D1B2A;
+
+  --color-text:           #F4F6F9;
+  --color-text-secondary: #A9B5C2;
+  --color-text-muted:     #6B7B8C;
+
+  --color-border: #3A4A5C;
 }
 
+/* ── Base ── */
 body {
-  background-color: white;
-  color: #111827;
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-bg-app);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}
+
+/* Clase utilitaria para Syne en elementos no-heading */
+.font-syne {
+  font-family: var(--font-display);
+}
+
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }

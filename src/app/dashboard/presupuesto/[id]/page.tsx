@@ -42,7 +42,7 @@ const fmt = (n: number) =>
   n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const inputClass =
-  'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent'
+  'w-full bg-[#F4F6F9] dark:bg-[#0D1B2A] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] placeholder:text-[#A9B5C2] rounded-[8px] px-3 py-2 text-sm focus:outline-none focus:border-[#FF6A00] transition-colors'
 
 export default function PresupuestoEditorPage() {
   const params = useParams()
@@ -414,41 +414,39 @@ export default function PresupuestoEditorPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-sm text-gray-400 italic">Cargando presupuesto...</p>
+      <main className="min-h-screen bg-[#F4F6F9] dark:bg-[#0D1B2A] flex items-center justify-center">
+        <p className="text-sm text-[#A9B5C2] italic">Cargando presupuesto...</p>
       </main>
     )
   }
 
+  const lbl = 'block text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]'
+  const sec = 'bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] shadow-sm p-4 sm:p-6 space-y-4'
+  const secTitle = 'text-xs font-bold text-[#6B7B8C] dark:text-[#A9B5C2] uppercase tracking-wider'
+  const inlineInput = 'bg-transparent text-[#0D1B2A] dark:text-[#F4F6F9] px-1 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#FF6A00] rounded transition-colors'
+
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-[#F4F6F9] dark:bg-[#0D1B2A]">
 
       {/* Barra superior */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between gap-3">
+      <div className="bg-white dark:bg-[#1B2A3A] border-b border-[#D5DCE4] dark:border-[#3A4A5C] px-4 py-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <a href="/dashboard" className="text-gray-400 hover:text-gray-900 text-sm transition-colors shrink-0">
+          <a href="/dashboard" className="text-[#6B7B8C] hover:text-[#FF6A00] text-sm transition-colors shrink-0">
             ← Volver
           </a>
-          <span className="text-base font-semibold text-gray-900 truncate">
+          <span className="text-base font-bold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">
             Presupuesto #{budget.budget_number}
           </span>
-          {dirty && <span className="text-xs text-gray-400 shrink-0">Sin guardar</span>}
+          {dirty && <span className="text-xs text-[#A9B5C2] shrink-0">Sin guardar</span>}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
+          <button type="button" onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
             disabled={generatingPdf}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-          >
+            className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors">
             {generatingPdf ? 'Generando...' : pdfUrl ? 'Descargar PDF' : 'PDF'}
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700 disabled:opacity-40 transition-colors"
-          >
+          <button type="button" onClick={handleSave} disabled={saving}
+            className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2 text-sm disabled:opacity-40 transition-colors">
             {saving ? 'Guardando...' : 'Guardar'}
           </button>
         </div>
@@ -457,26 +455,26 @@ export default function PresupuestoEditorPage() {
       <div className="px-4 py-6 max-w-4xl mx-auto space-y-6">
 
         {/* Datos del presupuesto */}
-        <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 space-y-4">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Datos del presupuesto</h2>
+        <section className={sec}>
+          <h2 className={secTitle}>Datos del presupuesto</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500">Fecha</label>
+              <label className={lbl}>Fecha</label>
               <input type="date" value={budget.issued_date}
                 onChange={e => updateBudgetField('issued_date', e.target.value)} className={inputClass} />
             </div>
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500">Validez (días)</label>
+              <label className={lbl}>Validez (días)</label>
               <input type="number" value={budget.valid_days} min={1}
                 onChange={e => updateBudgetField('valid_days', Number(e.target.value))} className={inputClass} />
             </div>
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500">Nº presupuesto (auto)</label>
+              <label className={lbl}>Nº presupuesto (auto)</label>
               <input type="text" value={budget.budget_number} disabled
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400" />
+                className="w-full bg-[#EDF0F4] dark:bg-[#3A4A5C] border border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[8px] px-3 py-2 text-sm text-[#A9B5C2]" />
             </div>
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500">Nº factura / referencia</label>
+              <label className={lbl}>Nº factura / referencia</label>
               <input type="text" value={budget.invoice_number}
                 onChange={e => updateBudgetField('invoice_number', e.target.value)}
                 placeholder="Ej. 26/001" className={inputClass} />
@@ -485,35 +483,35 @@ export default function PresupuestoEditorPage() {
         </section>
 
         {/* Datos del cliente */}
-        <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 space-y-4">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Datos del cliente</h2>
+        <section className={sec}>
+          <h2 className={secTitle}>Datos del cliente</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500">Nombre / empresa</label>
+              <label className={lbl}>Nombre / empresa</label>
               <input type="text" value={budget.client_name}
                 onChange={e => updateBudgetField('client_name', e.target.value)}
                 placeholder="Nombre del cliente" className={inputClass} />
             </div>
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500">NIF / CIF</label>
+              <label className={lbl}>NIF / CIF</label>
               <input type="text" value={budget.client_nif}
                 onChange={e => updateBudgetField('client_nif', e.target.value)}
                 placeholder="12345678A" className={inputClass} />
             </div>
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500">Email</label>
+              <label className={lbl}>Email</label>
               <input type="email" value={budget.client_email}
                 onChange={e => updateBudgetField('client_email', e.target.value)}
                 placeholder="cliente@email.com" className={inputClass} />
             </div>
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500">Teléfono</label>
+              <label className={lbl}>Teléfono</label>
               <input type="tel" value={budget.client_phone}
                 onChange={e => updateBudgetField('client_phone', e.target.value)}
                 placeholder="600 000 000" className={inputClass} />
             </div>
             <div className="space-y-1 sm:col-span-2">
-              <label className="block text-xs font-medium text-gray-500">Dirección</label>
+              <label className={lbl}>Dirección</label>
               <input type="text" value={budget.client_address}
                 onChange={e => updateBudgetField('client_address', e.target.value)}
                 placeholder="Calle, número, localidad" className={inputClass} />
@@ -522,51 +520,53 @@ export default function PresupuestoEditorPage() {
         </section>
 
         {/* Tabla de partidas */}
-        <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <section className="bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 bg-gray-50 text-left">
-                  <th className="px-3 py-3 font-medium text-gray-500">Descripción</th>
-                  <th className="px-3 py-3 font-medium text-gray-500 whitespace-nowrap">Ud.</th>
-                  <th className="px-3 py-3 font-medium text-gray-500 text-right whitespace-nowrap">Cantidad</th>
-                  <th className="px-3 py-3 font-medium text-gray-500 text-right whitespace-nowrap">P. Unit.</th>
-                  <th className="px-3 py-3 font-medium text-gray-500 text-right whitespace-nowrap">Total</th>
+                <tr className="border-b border-[#D5DCE4] dark:border-[#3A4A5C] bg-[#F4F6F9] dark:bg-[#0D1B2A] text-left">
+                  <th className="px-3 py-3 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Descripción</th>
+                  <th className="px-3 py-3 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] whitespace-nowrap">Ud.</th>
+                  <th className="px-3 py-3 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] text-right whitespace-nowrap">Cantidad</th>
+                  <th className="px-3 py-3 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] text-right whitespace-nowrap">P. Unit.</th>
+                  <th className="px-3 py-3 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] text-right whitespace-nowrap">Total</th>
                   <th className="px-3 py-3 w-8" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-[#D5DCE4] dark:divide-[#3A4A5C]">
                 {visibleItems.map(item => (
                   <tr key={item.id}
-                    className={item.confidence === 'baja' ? 'bg-yellow-50 border-l-4 border-yellow-400' : ''}>
+                    className={item.confidence === 'baja'
+                      ? 'bg-[#F5A623]/10 border-l-4 border-[#F5A623]'
+                      : 'bg-white dark:bg-[#1B2A3A]'}>
                     <td className="px-3 py-2">
                       <input type="text" value={item.description}
                         onChange={e => updateItem(item.id, 'description', e.target.value)}
                         placeholder="Descripción"
-                        className="w-full min-w-[160px] bg-transparent px-1 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 rounded" />
+                        className={`w-full min-w-[160px] ${inlineInput}`} />
                     </td>
                     <td className="px-3 py-2">
                       <input type="text" value={item.unit}
                         onChange={e => updateItem(item.id, 'unit', e.target.value)}
                         placeholder="ud"
-                        className="w-14 bg-transparent px-1 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 rounded" />
+                        className={`w-14 ${inlineInput}`} />
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" value={item.quantity} min={0} step="any"
                         onChange={e => updateItem(item.id, 'quantity', Number(e.target.value))}
-                        className="w-20 bg-transparent px-1 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-gray-400 rounded" />
+                        className={`w-20 text-right ${inlineInput}`} />
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" value={item.unit_price} min={0} step="any"
                         onChange={e => updateItem(item.id, 'unit_price', Number(e.target.value))}
-                        className="w-24 bg-transparent px-1 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-gray-400 rounded" />
+                        className={`w-24 text-right ${inlineInput}`} />
                     </td>
-                    <td className="px-3 py-2 text-right font-medium text-gray-900 whitespace-nowrap">
+                    <td className="px-3 py-2 text-right font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] whitespace-nowrap">
                       {fmt(item.total)} €
                     </td>
                     <td className="px-3 py-2">
                       <button type="button" onClick={() => deleteItem(item.id)} aria-label="Eliminar partida"
-                        className="flex items-center justify-center w-6 h-6 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                        className="flex items-center justify-center w-6 h-6 rounded-full text-[#A9B5C2] hover:text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                         ✕
                       </button>
                     </td>
@@ -575,29 +575,28 @@ export default function PresupuestoEditorPage() {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-3 border-t border-gray-100">
+          <div className="px-4 py-3 border-t border-[#D5DCE4] dark:border-[#3A4A5C]">
             <button type="button" onClick={addItem}
-              className="text-sm text-gray-500 hover:text-gray-900 transition-colors">
+              className="text-sm font-semibold text-[#FF6A00] hover:text-[#FF9248] transition-colors">
               + Añadir partida
             </button>
           </div>
         </section>
 
         {/* Impuesto y costes adicionales */}
-        <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 space-y-4">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Impuesto y costes adicionales</h2>
+        <section className={sec}>
+          <h2 className={secTitle}>Impuesto y costes adicionales</h2>
 
-          {/* IGIC / IVA */}
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-gray-500">Tipo de impuesto</label>
+            <label className={lbl}>Tipo de impuesto</label>
             <div className="flex gap-4">
               {(['IGIC', 'IVA'] as const).map(t => (
                 <label key={t} className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" name="tax_type" value={t}
                     checked={budget.tax_type === t}
                     onChange={() => handleTaxTypeChange(t)}
-                    className="accent-gray-900" />
-                  <span className="text-sm text-gray-700">
+                    className="accent-[#FF6A00]" />
+                  <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">
                     {t} ({t === 'IGIC' ? '7' : '21'}%)
                   </span>
                 </label>
@@ -605,50 +604,47 @@ export default function PresupuestoEditorPage() {
             </div>
           </div>
 
-          {/* Gastos generales */}
           <div className="flex items-center gap-3">
             <input type="checkbox" id="overhead" checked={budget.overhead_enabled}
               onChange={e => updateBudgetField('overhead_enabled', e.target.checked)}
-              className="accent-gray-900 w-4 h-4" />
-            <label htmlFor="overhead" className="text-sm text-gray-700 flex-1 cursor-pointer">
+              className="accent-[#FF6A00] w-4 h-4" />
+            <label htmlFor="overhead" className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9] flex-1 cursor-pointer">
               Gastos generales
             </label>
             <div className="flex items-center gap-1">
               <input type="number" value={budget.overhead_rate} min={0} max={100} step="0.01"
                 disabled={!budget.overhead_enabled}
                 onChange={e => updateBudgetField('overhead_rate', Number(e.target.value))}
-                className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-gray-900" />
-              <span className="text-sm text-gray-500">%</span>
+                className="w-20 bg-[#F4F6F9] dark:bg-[#0D1B2A] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] rounded-[8px] px-2 py-1.5 text-sm text-right disabled:opacity-40 focus:outline-none focus:border-[#FF6A00] transition-colors" />
+              <span className="text-sm text-[#6B7B8C]">%</span>
             </div>
           </div>
 
-          {/* Beneficio industrial */}
           <div className="flex items-center gap-3">
             <input type="checkbox" id="profit" checked={budget.profit_enabled}
               onChange={e => updateBudgetField('profit_enabled', e.target.checked)}
-              className="accent-gray-900 w-4 h-4" />
-            <label htmlFor="profit" className="text-sm text-gray-700 flex-1 cursor-pointer">
+              className="accent-[#FF6A00] w-4 h-4" />
+            <label htmlFor="profit" className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9] flex-1 cursor-pointer">
               Beneficio industrial
             </label>
             <div className="flex items-center gap-1">
               <input type="number" value={budget.profit_rate} min={0} max={100} step="0.01"
                 disabled={!budget.profit_enabled}
                 onChange={e => updateBudgetField('profit_rate', Number(e.target.value))}
-                className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-right disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-gray-900" />
-              <span className="text-sm text-gray-500">%</span>
+                className="w-20 bg-[#F4F6F9] dark:bg-[#0D1B2A] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] rounded-[8px] px-2 py-1.5 text-sm text-right disabled:opacity-40 focus:outline-none focus:border-[#FF6A00] transition-colors" />
+              <span className="text-sm text-[#6B7B8C]">%</span>
             </div>
           </div>
 
-          {/* Extras */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2 space-y-1">
-              <label className="block text-xs font-medium text-gray-500">Extras fuera de presupuesto (descripción)</label>
+              <label className={lbl}>Extras fuera de presupuesto (descripción)</label>
               <input type="text" value={budget.extras_description}
                 onChange={e => updateBudgetField('extras_description', e.target.value)}
                 placeholder="Ej. Gestión de residuos" className={inputClass} />
             </div>
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500">Importe (€)</label>
+              <label className={lbl}>Importe (€)</label>
               <input type="number" value={budget.extras_amount} min={0} step="0.01"
                 onChange={e => updateBudgetField('extras_amount', Number(e.target.value))}
                 className={inputClass} />
@@ -657,39 +653,39 @@ export default function PresupuestoEditorPage() {
         </section>
 
         {/* Resumen de precios */}
-        <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+        <section className={sec}>
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between text-gray-600">
+            <div className="flex justify-between text-[#6B7B8C] dark:text-[#A9B5C2]">
               <span>Presupuesto de ejecución material</span>
               <span>{fmt(subtotal)} €</span>
             </div>
             {budget.overhead_enabled && (
-              <div className="flex justify-between text-gray-600">
+              <div className="flex justify-between text-[#6B7B8C] dark:text-[#A9B5C2]">
                 <span>Gastos generales ({budget.overhead_rate}%)</span>
                 <span>{fmt(overhead)} €</span>
               </div>
             )}
             {budget.profit_enabled && (
-              <div className="flex justify-between text-gray-600">
+              <div className="flex justify-between text-[#6B7B8C] dark:text-[#A9B5C2]">
                 <span>Beneficio industrial ({budget.profit_rate}%)</span>
                 <span>{fmt(profit)} €</span>
               </div>
             )}
             {extras > 0 && (
-              <div className="flex justify-between text-gray-600">
+              <div className="flex justify-between text-[#6B7B8C] dark:text-[#A9B5C2]">
                 <span>{budget.extras_description || 'Extras'}</span>
                 <span>{fmt(extras)} €</span>
               </div>
             )}
-            <div className="flex justify-between text-gray-700 font-medium pt-1 border-t border-gray-100">
+            <div className="flex justify-between font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] pt-1 border-t border-[#D5DCE4] dark:border-[#3A4A5C]">
               <span>Base imponible</span>
               <span>{fmt(baseImponible)} €</span>
             </div>
-            <div className="flex justify-between text-gray-600">
+            <div className="flex justify-between text-[#6B7B8C] dark:text-[#A9B5C2]">
               <span>{budget.tax_type} ({budget.tax_rate}%)</span>
               <span>{fmt(taxAmount)} €</span>
             </div>
-            <div className="flex justify-between font-semibold text-gray-900 text-base pt-2 border-t border-gray-200">
+            <div className="flex justify-between font-bold text-[#0D1B2A] dark:text-[#F4F6F9] text-base pt-2 border-t border-[#D5DCE4] dark:border-[#3A4A5C]">
               <span>Total</span>
               <span>{fmt(totalAmount)} €</span>
             </div>
@@ -697,7 +693,7 @@ export default function PresupuestoEditorPage() {
         </section>
 
         {saveError && (
-          <p role="alert" className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          <p role="alert" className="rounded-[8px] bg-red-50 dark:bg-red-900/20 border border-[#E5484D]/40 px-4 py-3 text-sm text-[#E5484D]">
             {saveError}
           </p>
         )}
@@ -705,15 +701,12 @@ export default function PresupuestoEditorPage() {
         {/* Botones móvil */}
         <div className="flex flex-col sm:flex-row gap-3 pb-8">
           <button type="button" onClick={handleSave} disabled={saving}
-            className="flex-1 rounded-xl bg-gray-900 px-4 py-4 text-base font-semibold text-white hover:bg-gray-700 disabled:opacity-40 transition-colors">
+            className="flex-1 bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
             {saving ? 'Guardando...' : 'Guardar borrador'}
           </button>
-          <button
-            type="button"
-            onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
+          <button type="button" onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
             disabled={generatingPdf}
-            className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-4 text-base font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-          >
+            className="flex-1 bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#D5DCE4] dark:hover:bg-[#4A5A6C] font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
             {generatingPdf ? 'Generando PDF...' : pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
           </button>
         </div>
