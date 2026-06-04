@@ -14,11 +14,16 @@ const fmtDate = (iso: string) => {
   return `${d}/${m}/${y}`
 }
 
+const TRIAL_LIMIT = 3
+
 export default function DashboardPage() {
   const router = useRouter()
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string>('trial')
+  const [budgetsUsed, setBudgetsUsed] = useState(0)
+  const [openingPortal, setOpeningPortal] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -26,12 +31,16 @@ export default function DashboardPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.replace('/login'); return }
 
-      const { data } = await supabase
-        .from('budgets')
-        .select('*')
-        .order('updated_at', { ascending: false })
+      const [budgetsRes, profileRes] = await Promise.all([
+        supabase.from('budgets').select('*').order('updated_at', { ascending: false }),
+        supabase.from('profiles').select('subscription_status, budgets_used').eq('id', user.id).single(),
+      ])
 
-      setBudgets(data ?? [])
+      setBudgets(budgetsRes.data ?? [])
+      if (profileRes.data) {
+        setSubscriptionStatus(profileRes.data.subscription_status ?? 'trial')
+        setBudgetsUsed(profileRes.data.budgets_used ?? 0)
+      }
       setLoading(false)
     }
 
@@ -44,40 +53,54 @@ export default function DashboardPage() {
     setDeletingId(budgetId)
     const supabase = createClient()
 
-    // 1. Obtener rutas de Storage antes de borrar
     const { data: uploadRows } = await supabase
       .from('uploads')
       .select('id, storage_path')
       .eq('budget_id', budgetId)
 
-    // 2. Borrar archivos de Storage
     if (uploadRows && uploadRows.length > 0) {
-      await supabase.storage
-        .from('uploads')
-        .remove(uploadRows.map(u => u.storage_path))
-
-      // 3. Borrar filas de uploads (ON DELETE SET NULL no las elimina)
-      await supabase
-        .from('uploads')
-        .delete()
-        .in('id', uploadRows.map(u => u.id))
+      await supabase.storage.from('uploads').remove(uploadRows.map(u => u.storage_path))
+      await supabase.from('uploads').delete().in('id', uploadRows.map(u => u.id))
     }
 
-    // 4. Borrar el presupuesto (line_items se eliminan en cascada por ON DELETE CASCADE)
     await supabase.from('budgets').delete().eq('id', budgetId)
-
-    // 5. Actualizar lista local sin recargar
     setBudgets(prev => prev.filter(b => b.id !== budgetId))
     setDeletingId(null)
   }
+
+  async function handlePortal() {
+    setOpeningPortal(true)
+    try {
+      const res = await fetch('/api/stripe/portal', { method: 'POST' })
+      const data = await res.json()
+      if (data.url) window.location.href = data.url
+    } finally {
+      setOpeningPortal(false)
+    }
+  }
+
+  const remaining = Math.max(0, TRIAL_LIMIT - budgetsUsed)
+  const isTrial = subscriptionStatus === 'trial'
+  const hasSubscription = ['trialing', 'active', 'past_due'].includes(subscriptionStatus)
 
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-8">
       <div className="max-w-2xl mx-auto space-y-6">
 
+        {/* Cabecera */}
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">Presupuestos</h1>
           <div className="flex items-center gap-3">
+            {hasSubscription && (
+              <button
+                type="button"
+                onClick={handlePortal}
+                disabled={openingPortal}
+                className="text-sm text-gray-500 hover:text-gray-900 disabled:opacity-40 transition-colors"
+              >
+                {openingPortal ? 'Abriendo...' : 'Suscripción'}
+              </button>
+            )}
             <Link
               href="/dashboard/perfil"
               className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
@@ -92,6 +115,48 @@ export default function DashboardPage() {
             </Link>
           </div>
         </div>
+
+        {/* Banner de trial */}
+        {isTrial && !loading && (
+          <div className={`rounded-xl border px-4 py-3 flex items-center justify-between gap-4 ${
+            remaining === 0
+              ? 'bg-red-50 border-red-200'
+              : remaining === 1
+              ? 'bg-amber-50 border-amber-200'
+              : 'bg-blue-50 border-blue-200'
+          }`}>
+            <p className={`text-sm font-medium ${
+              remaining === 0 ? 'text-red-700' : remaining === 1 ? 'text-amber-700' : 'text-blue-700'
+            }`}>
+              {remaining === 0
+                ? 'Has agotado los presupuestos gratuitos.'
+                : `Te quedan ${remaining} de ${TRIAL_LIMIT} presupuesto${remaining === 1 ? '' : 's'} gratuito${remaining === 1 ? '' : 's'}.`}
+            </p>
+            <Link
+              href="/pricing"
+              className="shrink-0 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-700 transition-colors"
+            >
+              Activar plan
+            </Link>
+          </div>
+        )}
+
+        {/* Estado de pago pendiente */}
+        {subscriptionStatus === 'past_due' && !loading && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 flex items-center justify-between gap-4">
+            <p className="text-sm font-medium text-red-700">
+              Pago pendiente — actualiza tu método de pago para seguir usando Presuply.
+            </p>
+            <button
+              type="button"
+              onClick={handlePortal}
+              disabled={openingPortal}
+              className="shrink-0 rounded-lg bg-red-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-600 disabled:opacity-40 transition-colors"
+            >
+              Actualizar pago
+            </button>
+          </div>
+        )}
 
         {loading ? (
           <p className="text-sm text-gray-400 italic">Cargando...</p>
@@ -115,16 +180,10 @@ export default function DashboardPage() {
                 >
                   <div className="min-w-0 space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-gray-400">
-                        #{b.budget_number}
-                      </span>
-                      <span
-                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                          b.status === 'sent'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-gray-100 text-gray-500'
-                        }`}
-                      >
+                      <span className="text-xs font-medium text-gray-400">#{b.budget_number}</span>
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                        b.status === 'sent' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                      }`}>
                         {b.status === 'sent' ? 'Enviado' : 'Borrador'}
                       </span>
                     </div>
@@ -136,9 +195,7 @@ export default function DashboardPage() {
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-base font-semibold text-gray-900">
-                      {fmt(b.total)} €
-                    </p>
+                    <p className="text-base font-semibold text-gray-900">{fmt(b.total)} €</p>
                   </div>
                 </Link>
 
