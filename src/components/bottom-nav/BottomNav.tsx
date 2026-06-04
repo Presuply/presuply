@@ -18,14 +18,16 @@ export function BottomNav() {
 
   return (
     <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] sm:hidden">
-      <div className="relative bg-white border border-gray-200 shadow-sm rounded-2xl px-3 pt-2 pb-3">
+      <div className="relative bg-white dark:bg-[#1B2A3A] border border-gray-200 dark:border-[#3A4A5C] shadow-sm rounded-2xl px-3 pt-2 pb-3">
         <div className="flex items-end gap-2">
           <Link
             href="/dashboard"
-            aria-label="Dashboard"
+            aria-label="Presupuestos"
             className={[
               baseItemClass,
-              dashboardActive ? 'text-gray-900' : 'text-gray-500 hover:text-gray-900',
+              dashboardActive
+                ? 'text-gray-900 dark:text-[#F4F6F9]'
+                : 'text-gray-500 dark:text-[#A9B5C2] hover:text-gray-900 dark:hover:text-[#F4F6F9]',
             ].join(' ')}
           >
             <svg
@@ -43,7 +45,7 @@ export function BottomNav() {
               <path d="M5 10v10a1 1 0 0 0 1 1h4v-7h4v7h4a1 1 0 0 0 1-1V10" />
             </svg>
             <span className={dashboardActive ? 'text-sm font-semibold' : 'text-sm'}>
-              Dashboard
+              Presupuestos
             </span>
           </Link>
 
@@ -54,8 +56,10 @@ export function BottomNav() {
           >
             <span
               className={[
-                'flex items-center justify-center w-14 h-14 rounded-full border border-gray-200 shadow-sm transition-colors',
-                nuevoActive ? 'bg-gray-900 text-white' : 'bg-white text-gray-900 hover:bg-gray-50',
+                'flex items-center justify-center w-14 h-14 rounded-full border border-gray-200 dark:border-[#3A4A5C] shadow-sm transition-colors',
+                nuevoActive
+                  ? 'bg-gray-900 text-white dark:bg-[#F4F6F9] dark:text-[#0D1B2A]'
+                  : 'bg-white text-gray-900 hover:bg-gray-50 dark:bg-[#1B2A3A] dark:text-[#F4F6F9] dark:hover:bg-[#223447]',
               ].join(' ')}
             >
               <svg
@@ -80,7 +84,9 @@ export function BottomNav() {
             aria-label="Mi perfil"
             className={[
               baseItemClass,
-              perfilActive ? 'text-gray-900' : 'text-gray-500 hover:text-gray-900',
+              perfilActive
+                ? 'text-gray-900 dark:text-[#F4F6F9]'
+                : 'text-gray-500 dark:text-[#A9B5C2] hover:text-gray-900 dark:hover:text-[#F4F6F9]',
             ].join(' ')}
           >
             <svg
