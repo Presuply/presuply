@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
-    apple: "/favicon.svg",
+    apple: "/apple-touch-icon.png",
   },
 };
 
@@ -38,6 +38,9 @@ export default function RootLayout({
       className={`${syne.variable} ${montserrat.variable} h-full`}
       suppressHydrationWarning
     >
+      <head>
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+      </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>{children}</ThemeProvider>
       </body>
