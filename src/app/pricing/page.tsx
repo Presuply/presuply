@@ -91,28 +91,31 @@ export default function PricingPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 px-4 py-12">
+    <main className="min-h-screen bg-[#F4F6F9] dark:bg-[#0D1B2A] px-4 py-12">
       <div className="max-w-5xl mx-auto space-y-10">
 
         {/* Cabecera */}
         <div className="text-center space-y-3">
-          <Link href="/dashboard" className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
+          <Link href="/dashboard" className="text-sm text-[#6B7B8C] hover:text-[#FF6A00] transition-colors">
             ← Volver al dashboard
           </Link>
-          <h1 className="text-3xl font-bold text-gray-900">Elige tu plan</h1>
-          <p className="text-gray-500">90 días de prueba gratuita. Cancela cuando quieras.</p>
+          <div className="flex justify-center">
+            <img src="/images/logo.svg" alt="Presuply" className="h-10 w-auto" />
+          </div>
+          <h1 className="text-3xl font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">Elige tu plan</h1>
+          <p className="text-[#6B7B8C] dark:text-[#A9B5C2]">90 días de prueba gratuita. Cancela cuando quieras.</p>
         </div>
 
         {/* Toggle mensual / anual */}
         <div className="flex justify-center">
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+          <div className="flex items-center gap-1 bg-[#EDF0F4] dark:bg-[#1B2A3A] rounded-[10px] p-1">
             <button
               type="button"
               onClick={() => setBilling('mensual')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`px-4 py-2 rounded-[8px] text-sm font-semibold transition-colors ${
                 billing === 'mensual'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'bg-white dark:bg-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] shadow-sm'
+                  : 'text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9]'
               }`}
             >
               Mensual
@@ -120,14 +123,14 @@ export default function PricingPage() {
             <button
               type="button"
               onClick={() => setBilling('anual')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`px-4 py-2 rounded-[8px] text-sm font-semibold transition-colors ${
                 billing === 'anual'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'bg-white dark:bg-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] shadow-sm'
+                  : 'text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9]'
               }`}
             >
               Anual
-              <span className="ml-1.5 rounded-full bg-green-100 px-1.5 py-0.5 text-xs font-semibold text-green-700">
+              <span className="ml-1.5 rounded-full bg-[#1FB57A]/15 px-1.5 py-0.5 text-xs font-bold text-[#1FB57A]">
                 −20%
               </span>
             </button>
@@ -143,28 +146,28 @@ export default function PricingPage() {
             return (
               <div
                 key={plan.key}
-                className={`bg-white rounded-2xl border p-6 flex flex-col gap-6 ${
+                className={`bg-white dark:bg-[#1B2A3A] rounded-[16px] border p-6 flex flex-col gap-6 shadow-sm ${
                   'highlight' in plan && plan.highlight
-                    ? 'border-gray-900 shadow-lg ring-1 ring-gray-900'
-                    : 'border-gray-200'
+                    ? 'border-[#FF6A00] shadow-[0_0_0_2px_#FF6A00]'
+                    : 'border-[#D5DCE4] dark:border-[#3A4A5C]'
                 }`}
               >
                 {'highlight' in plan && plan.highlight && (
                   <div className="text-center">
-                    <span className="rounded-full bg-gray-900 px-3 py-1 text-xs font-semibold text-white">
+                    <span className="rounded-full bg-[#FF6A00] px-3 py-1 text-xs font-bold text-white">
                       Más popular
                     </span>
                   </div>
                 )}
 
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">{plan.name}</h2>
+                  <h2 className="text-lg font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">{plan.name}</h2>
                   <div className="mt-2 flex items-end gap-1">
-                    <span className="text-4xl font-bold text-gray-900">{price}€</span>
-                    <span className="text-sm text-gray-500 mb-1">/mes</span>
+                    <span className="text-4xl font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">{price}€</span>
+                    <span className="text-sm text-[#6B7B8C] dark:text-[#A9B5C2] mb-1">/mes</span>
                   </div>
                   {billing === 'anual' && (
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-[#A9B5C2] mt-1">
                       Facturado anualmente ({price * 12}€/año)
                     </p>
                   )}
@@ -172,8 +175,8 @@ export default function PricingPage() {
 
                 <ul className="space-y-2 flex-1">
                   {plan.features.map(f => (
-                    <li key={f} className="flex items-start gap-2 text-sm text-gray-600">
-                      <span className="text-gray-400 shrink-0">✓</span>
+                    <li key={f} className="flex items-start gap-2 text-sm text-[#6B7B8C] dark:text-[#A9B5C2]">
+                      <span className="text-[#1FB57A] shrink-0 font-bold">✓</span>
                       {f}
                     </li>
                   ))}
@@ -183,10 +186,10 @@ export default function PricingPage() {
                   type="button"
                   onClick={() => handleCheckout(plan.key)}
                   disabled={isLoading}
-                  className={`w-full rounded-xl px-4 py-3 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  className={`w-full rounded-[8px] px-4 py-3 text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                     'highlight' in plan && plan.highlight
-                      ? 'bg-gray-900 text-white hover:bg-gray-700'
-                      : 'border border-gray-300 bg-white text-gray-900 hover:bg-gray-50'
+                      ? 'bg-[#FF6A00] text-white hover:bg-[#FF9248]'
+                      : 'border border-[#FF6A00] text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/20'
                   }`}
                 >
                   {isLoading ? 'Redirigiendo...' : 'Empezar prueba gratuita'}
@@ -197,12 +200,12 @@ export default function PricingPage() {
         </div>
 
         {error && (
-          <p role="alert" className="text-center rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          <p role="alert" className="text-center rounded-[8px] bg-red-50 dark:bg-red-900/20 border border-[#E5484D]/40 px-4 py-3 text-sm text-[#E5484D]">
             {error}
           </p>
         )}
 
-        <p className="text-center text-xs text-gray-400">
+        <p className="text-center text-xs text-[#A9B5C2]">
           Al continuar aceptas nuestros términos de servicio. Cancela en cualquier momento desde tu panel de suscripción.
         </p>
 
