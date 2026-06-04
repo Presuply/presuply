@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { BottomNav } from '@/components/bottom-nav/BottomNav'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -49,5 +50,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     )
   }
 
-  return <>{children}</>
+  return (
+    <div className="min-h-screen pb-24 sm:pb-0">
+      {children}
+      <BottomNav />
+    </div>
+  )
 }
