@@ -103,7 +103,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // 2. Parsear body
+    // 2. Verificar suscripción y límite de trial
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('subscription_status, budgets_used')
+      .eq('id', user.id)
+      .single()
+
+    const status = profile?.subscription_status ?? 'trial'
+    const used = profile?.budgets_used ?? 0
+
+    if (status === 'canceled') {
+      return NextResponse.json({ error: 'subscription_canceled' }, { status: 403 })
+    }
+    if (status === 'past_due') {
+      return NextResponse.json({ error: 'payment_failed' }, { status: 403 })
+    }
+    if (status === 'trial' && used >= 3) {
+      return NextResponse.json({ error: 'trial_exhausted' }, { status: 403 })
+    }
+
+    // 3. Parsear body
     let budgetId: string
     let uploadPaths: string[]
     let text: string | undefined
@@ -253,6 +273,12 @@ export async function POST(request: Request) {
         .eq('id', budgetId)
         .eq('user_id', user.id)
     }
+
+    // Incrementar contador de presupuestos usados
+    await supabase
+      .from('profiles')
+      .update({ budgets_used: used + 1 })
+      .eq('id', user.id)
 
     return NextResponse.json(parsed)
 

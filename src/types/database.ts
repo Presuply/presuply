@@ -14,6 +14,10 @@ export interface Profile {
   iban: string | null
   invoice_prefix: string | null
   template_url: string | null
+  stripe_customer_id: string | null
+  stripe_subscription_id: string | null
+  subscription_status: string
+  budgets_used: number
   plan: string
   created_at: string
   updated_at: string

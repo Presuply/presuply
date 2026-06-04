@@ -136,6 +136,10 @@ export default function NuevoPresupuestoPage() {
       const data = await response.json()
 
       if (!response.ok) {
+        if (data.error === 'trial_exhausted') {
+          router.push('/pricing')
+          return
+        }
         setError(data.error ?? 'Error al generar el presupuesto. Inténtalo de nuevo.')
         setExtracting(false)
       } else {
