@@ -52,6 +52,19 @@ export default function NuevoPresupuestoPage() {
     createDraft()
   }, [router])
 
+  async function convertIfHeic(file: File): Promise<File> {
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    const isHeic = ext === 'heic' || ext === 'heif' ||
+      file.type === 'image/heic' || file.type === 'image/heif'
+    if (!isHeic) return file
+
+    const { default: heic2any } = await import('heic2any')
+    const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 })
+    const blob = Array.isArray(converted) ? converted[0] : converted
+    const newName = file.name.replace(/\.(heic|heif)$/i, '.jpg')
+    return new File([blob], newName, { type: 'image/jpeg' })
+  }
+
   async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
     if (!files.length || !budgetId) return
@@ -63,7 +76,15 @@ export default function NuevoPresupuestoPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    for (const file of files) {
+    for (const original of files) {
+      let file: File
+      try {
+        file = await convertIfHeic(original)
+      } catch {
+        setError(`No se pudo procesar "${original.name}". Inténtalo de nuevo.`)
+        continue
+      }
+
       const fileName = `${Date.now()}_${file.name}`
       const storagePath = `${user.id}/${budgetId}/${fileName}`
 
