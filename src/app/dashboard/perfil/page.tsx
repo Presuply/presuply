@@ -1,9 +1,11 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useTheme } from '@/components/ThemeProvider'
+import { getPlanLimits, getPlanDisplayName, type PlanKey } from '@/lib/plans'
 
 interface ProfileForm {
   full_name: string
@@ -43,6 +45,12 @@ export default function PerfilPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [planKey, setPlanKey] = useState<PlanKey>('trial')
+  const [subscriptionStatus, setSubscriptionStatus] = useState('trial')
+  const [budgetsUsed, setBudgetsUsed] = useState(0)
+  const [budgetsThisMonth, setBudgetsThisMonth] = useState(0)
+  const [isTeam, setIsTeam] = useState(false)
+  const [openingPortal, setOpeningPortal] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -70,6 +78,11 @@ export default function PerfilPage() {
           logo_url: data.logo_url,
           template_url: data.template_url,
         })
+        setPlanKey((data.plan_key ?? 'trial') as PlanKey)
+        setSubscriptionStatus(data.subscription_status ?? 'trial')
+        setBudgetsUsed(data.budgets_used ?? 0)
+        setBudgetsThisMonth(data.budgets_this_month ?? 0)
+        setIsTeam(data.is_team ?? false)
 
         if (data.logo_url) {
           const { data: signed } = await supabase.storage
@@ -167,6 +180,17 @@ export default function PerfilPage() {
 
   function update(field: keyof ProfileForm, value: string) {
     setProfile(prev => ({ ...prev, [field]: value }))
+  }
+
+  async function handlePortal() {
+    setOpeningPortal(true)
+    try {
+      const res = await fetch('/api/stripe/portal', { method: 'POST' })
+      const data = await res.json()
+      if (data.url) window.location.href = data.url
+    } finally {
+      setOpeningPortal(false)
+    }
   }
 
   async function handleSignOut() {
@@ -317,6 +341,80 @@ export default function PerfilPage() {
           className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
           {saving ? 'Guardando...' : 'Guardar perfil'}
         </button>
+
+        {/* Mi suscripción */}
+        {(() => {
+          const limits = getPlanLimits(planKey, isTeam)
+          const isTrial = planKey === 'trial' && !isTeam
+          const monthlyLimit = limits.budgetsPerMonth
+          const usedThisMonth = budgetsThisMonth
+          const progressPct = monthlyLimit ? Math.min(100, Math.round((usedThisMonth / monthlyLimit) * 100)) : 0
+          const hasSubscription = ['trialing', 'active', 'past_due'].includes(subscriptionStatus)
+
+          const planColors: Record<string, string> = {
+            trial:       'bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#6B7B8C] dark:text-[#A9B5C2]',
+            autonomo:    'bg-[#3E7BFA]/15 text-[#3E7BFA]',
+            profesional: 'bg-[#1FB57A]/15 text-[#1FB57A]',
+            empresa:     'bg-[#9B59B6]/15 text-[#9B59B6]',
+          }
+          const badgeClass = isTeam ? 'bg-[#FF6A00]/15 text-[#FF6A00]' : (planColors[planKey] ?? planColors.trial)
+
+          return (
+            <section className={sec}>
+              <h2 className={secTitle}>Mi suscripción</h2>
+
+              <div className="flex items-center gap-3">
+                <span className={`inline-block rounded-full px-3 py-1 text-sm font-semibold ${badgeClass}`}>
+                  {isTeam ? 'Equipo' : getPlanDisplayName(planKey)}
+                </span>
+                {subscriptionStatus === 'past_due' && (
+                  <span className="inline-block rounded-full px-3 py-1 text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-[#E5484D]">
+                    Pago pendiente
+                  </span>
+                )}
+              </div>
+
+              {isTrial ? (
+                <div className="space-y-1">
+                  <p className="text-sm text-[#6B7B8C] dark:text-[#A9B5C2]">
+                    Te quedan <strong className="text-[#0D1B2A] dark:text-[#F4F6F9]">{Math.max(0, 3 - budgetsUsed)}</strong> de 3 presupuestos gratuitos.
+                  </p>
+                  <div className="w-full bg-[#EDF0F4] dark:bg-[#3A4A5C] rounded-full h-2">
+                    <div className="bg-[#FF6A00] rounded-full h-2 transition-all" style={{ width: `${Math.min(100, Math.round((budgetsUsed / 3) * 100))}%` }} />
+                  </div>
+                </div>
+              ) : monthlyLimit !== null ? (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-[#6B7B8C] dark:text-[#A9B5C2]">
+                    <span>Presupuestos este mes</span>
+                    <span className="font-semibold text-[#0D1B2A] dark:text-[#F4F6F9]">{usedThisMonth} / {monthlyLimit}</span>
+                  </div>
+                  <div className="w-full bg-[#EDF0F4] dark:bg-[#3A4A5C] rounded-full h-2">
+                    <div
+                      className={`rounded-full h-2 transition-all ${progressPct >= 90 ? 'bg-[#E5484D]' : progressPct >= 70 ? 'bg-[#F5A623]' : 'bg-[#1FB57A]'}`}
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-[#6B7B8C] dark:text-[#A9B5C2]">Presupuestos ilimitados.</p>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                {hasSubscription && (
+                  <button type="button" onClick={handlePortal} disabled={openingPortal}
+                    className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-4 py-2.5 text-sm font-medium disabled:opacity-40 transition-colors">
+                    {openingPortal ? 'Abriendo...' : 'Gestionar suscripción'}
+                  </button>
+                )}
+                <Link href="/pricing"
+                  className="flex-1 bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm text-center transition-colors">
+                  {isTrial ? 'Activar plan' : 'Ver todos los planes'}
+                </Link>
+              </div>
+            </section>
+          )
+        })()}
 
         {/* Preferencias */}
         <section className={sec}>

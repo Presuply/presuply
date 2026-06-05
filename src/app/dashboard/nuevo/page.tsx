@@ -169,7 +169,7 @@ export default function NuevoPresupuestoPage() {
       const data = await response.json()
 
       if (!response.ok) {
-        if (data.error === 'trial_exhausted') {
+        if (data.error === 'trial_exhausted' || data.error === 'monthly_limit') {
           router.push('/pricing')
           return
         }

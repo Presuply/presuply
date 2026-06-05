@@ -3,6 +3,7 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getPlanLimits, type PlanKey } from '@/lib/plans'
 
 const MODEL = 'claude-sonnet-4-6'
 
@@ -110,16 +111,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // 2. Verificar suscripción y límite de trial
+    // 2. Verificar suscripción y límites del plan
     const { data: profile } = await supabase
       .from('profiles')
-      .select('subscription_status, budgets_used, is_team')
+      .select('subscription_status, budgets_used, is_team, plan_key, budgets_this_month, month_reset_at')
       .eq('id', user.id)
       .single()
 
     if (!profile?.is_team) {
       const status = profile?.subscription_status ?? 'trial'
-      const used = profile?.budgets_used ?? 0
+      const planKey = (profile?.plan_key ?? 'trial') as PlanKey
 
       if (status === 'canceled') {
         return NextResponse.json({ error: 'subscription_canceled' }, { status: 403 })
@@ -127,8 +128,27 @@ export async function POST(request: Request) {
       if (status === 'past_due') {
         return NextResponse.json({ error: 'payment_failed' }, { status: 403 })
       }
-      if (status === 'trial' && used >= 3) {
+
+      // Trial: límite total de 3 presupuestos
+      if (planKey === 'trial' && (profile?.budgets_used ?? 0) >= 3) {
         return NextResponse.json({ error: 'trial_exhausted' }, { status: 403 })
+      }
+
+      // Resetear contador mensual si el mes ha cambiado
+      const today = new Date().toISOString().slice(0, 10)
+      const resetAt = profile?.month_reset_at ?? today
+      if (resetAt < today) {
+        await supabase
+          .from('profiles')
+          .update({ budgets_this_month: 0, month_reset_at: today })
+          .eq('id', user.id)
+        if (profile) profile.budgets_this_month = 0
+      }
+
+      // Límite mensual según plan
+      const limits = getPlanLimits(planKey, false)
+      if (limits.budgetsPerMonth !== null && (profile?.budgets_this_month ?? 0) >= limits.budgetsPerMonth) {
+        return NextResponse.json({ error: 'monthly_limit' }, { status: 403 })
       }
     }
 
@@ -328,12 +348,14 @@ export async function POST(request: Request) {
         .eq('user_id', user.id)
     }
 
-    // Incrementar contador de presupuestos usados (no aplica a cuentas del equipo)
+    // Incrementar contadores (no aplica a cuentas del equipo)
     if (!profile?.is_team) {
-      const used = profile?.budgets_used ?? 0
       await supabase
         .from('profiles')
-        .update({ budgets_used: used + 1 })
+        .update({
+          budgets_used: (profile?.budgets_used ?? 0) + 1,
+          budgets_this_month: (profile?.budgets_this_month ?? 0) + 1,
+        })
         .eq('id', user.id)
     }
 

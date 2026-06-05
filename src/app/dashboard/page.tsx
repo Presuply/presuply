@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Budget, Folder } from '@/types/database'
+import { getPlanLimits, type PlanKey } from '@/lib/plans'
 import {
   DndContext,
   DragOverlay,
@@ -224,6 +225,9 @@ export default function DashboardPage() {
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('trial')
   const [budgetsUsed, setBudgetsUsed] = useState(0)
   const [openingPortal, setOpeningPortal] = useState(false)
+  const [planKey, setPlanKey] = useState<PlanKey>('trial')
+  const [isTeam, setIsTeam] = useState(false)
+  const [showFolderUpgradeModal, setShowFolderUpgradeModal] = useState(false)
 
   // Búsqueda
   const [searchActive, setSearchActive] = useState(false)
@@ -262,7 +266,7 @@ export default function DashboardPage() {
       const [foldersRes, budgetsRes, profileRes] = await Promise.all([
         supabase.from('folders').select('*').order('position'),
         supabase.from('budgets').select('*').order('updated_at', { ascending: false }),
-        supabase.from('profiles').select('subscription_status, budgets_used').eq('id', user.id).single(),
+        supabase.from('profiles').select('subscription_status, budgets_used, plan_key, is_team').eq('id', user.id).single(),
       ])
 
       setFolders(foldersRes.data ?? [])
@@ -270,6 +274,8 @@ export default function DashboardPage() {
       if (profileRes.data) {
         setSubscriptionStatus(profileRes.data.subscription_status ?? 'trial')
         setBudgetsUsed(profileRes.data.budgets_used ?? 0)
+        setPlanKey((profileRes.data.plan_key ?? 'trial') as PlanKey)
+        setIsTeam(profileRes.data.is_team ?? false)
       }
       setLoading(false)
     }
@@ -455,10 +461,19 @@ export default function DashboardPage() {
                   className="text-sm text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#FF6A00] transition-colors hidden sm:block">
                   Mi perfil
                 </Link>
-                <button type="button" onClick={() => { setCreatingFolder(true); setOpenMenuId(null) }}
-                  className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium transition-colors">
-                  + Carpeta
-                </button>
+                {(() => {
+                  const canUseFolders = getPlanLimits(planKey, isTeam).canUseFolders
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => canUseFolders ? (setCreatingFolder(true), setOpenMenuId(null)) : setShowFolderUpgradeModal(true)}
+                      className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5"
+                    >
+                      {canUseFolders ? null : <span className="text-xs">🔒</span>}
+                      + Carpeta
+                    </button>
+                  )
+                })()}
                 <Link href="/dashboard/nuevo"
                   className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm transition-colors">
                   + Nuevo
@@ -694,6 +709,33 @@ export default function DashboardPage() {
         )}
 
       </div>
+
+      {/* Modal: upgrade para carpetas */}
+      {showFolderUpgradeModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
+          onClick={() => setShowFolderUpgradeModal(false)}>
+          <div className="bg-white dark:bg-[#1B2A3A] rounded-[12px] p-6 max-w-sm w-full space-y-4 shadow-xl"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🔒</span>
+              <h3 className="font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">Función bloqueada</h3>
+            </div>
+            <p className="text-sm text-[#6B7B8C] dark:text-[#A9B5C2]">
+              Las carpetas están disponibles a partir del plan <strong className="text-[#0D1B2A] dark:text-[#F4F6F9]">Profesional</strong>.
+            </p>
+            <div className="flex gap-2">
+              <Link href="/pricing"
+                className="flex-1 bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm text-center transition-colors">
+                Ver planes →
+              </Link>
+              <button type="button" onClick={() => setShowFolderUpgradeModal(false)}
+                className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#6B7B8C] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] rounded-[8px] px-4 py-2.5 text-sm transition-colors">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: confirmar eliminación de carpeta */}
       {deleteFolderConfirm && (
