@@ -49,6 +49,7 @@ export interface Budget {
   pdf_url: string | null
   notes: string | null
   valid_days: number | null
+  folder_id: string | null
   created_at: string
   updated_at: string
 }
@@ -73,6 +74,15 @@ export interface LineItem {
   unit_price: number
   total: number
   confidence: Confidence | null
+  position: number
+  created_at: string
+}
+
+export interface Folder {
+  id: string
+  user_id: string
+  name: string
+  color: string
   position: number
   created_at: string
 }
