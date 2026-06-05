@@ -68,6 +68,7 @@ interface BudgetHeader {
   extras_amount: number
   show_iban: boolean
   show_signature: boolean
+  expand_descriptions: boolean
 }
 
 interface DeleteConfirm {
@@ -307,7 +308,7 @@ export default function PresupuestoEditorPage() {
     budget_number: 0, tax_type: 'IGIC', tax_rate: 7, valid_days: 30,
     issued_date: new Date().toISOString().slice(0, 10), invoice_number: '',
     overhead_enabled: false, overhead_rate: 13, profit_enabled: false, profit_rate: 6,
-    extras_description: '', extras_amount: 0, show_iban: false, show_signature: false,
+    extras_description: '', extras_amount: 0, show_iban: false, show_signature: false, expand_descriptions: true,
   })
 
   const sensors = useSensors(
@@ -347,6 +348,7 @@ export default function PresupuestoEditorPage() {
         extras_amount: Number(b.extras_amount) || 0,
         show_iban: b.show_iban ?? false,
         show_signature: b.show_signature ?? false,
+        expand_descriptions: b.expand_descriptions ?? true,
       })
 
       const [{ data: rawChapters }, { data: rawItems }] = await Promise.all([
@@ -575,6 +577,7 @@ export default function PresupuestoEditorPage() {
         profit_enabled: budget.profit_enabled, profit_rate: budget.profit_rate,
         extras_description: budget.extras_description || null, extras_amount: budget.extras_amount,
         show_iban: budget.show_iban, show_signature: budget.show_signature,
+        expand_descriptions: budget.expand_descriptions,
         subtotal, tax_amount: taxAmount, total: totalAmount,
       })
       .eq('id', id)
@@ -807,6 +810,31 @@ export default function PresupuestoEditorPage() {
                 placeholder="Ej. 26/001" className={inputClass} />
             </div>
           </div>
+          {/* Toggle: mejorar descripciones */}
+          <label className="flex items-start gap-3 cursor-pointer select-none pt-1">
+            <div className="relative mt-0.5 shrink-0" onClick={e => e.preventDefault()}>
+              <input type="checkbox" checked={budget.expand_descriptions}
+                onChange={e => updateBudgetField('expand_descriptions', e.target.checked)}
+                className="sr-only" />
+              <div
+                onClick={() => updateBudgetField('expand_descriptions', !budget.expand_descriptions)}
+                className={`w-10 h-6 rounded-full transition-colors cursor-pointer ${budget.expand_descriptions ? 'bg-[#FF6A00]' : 'bg-[#D5DCE4] dark:bg-[#3A4A5C]'}`}
+              />
+              <div
+                onClick={() => updateBudgetField('expand_descriptions', !budget.expand_descriptions)}
+                className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform cursor-pointer ${budget.expand_descriptions ? 'translate-x-5' : 'translate-x-1'}`}
+              />
+            </div>
+            <div>
+              <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">Mejorar descripciones en el PDF</span>
+              <p className="text-xs text-[#A9B5C2] mt-0.5">
+                {budget.expand_descriptions
+                  ? 'Las descripciones se expandirán a texto técnico profesional al generar el PDF'
+                  : 'El PDF mostrará exactamente lo que has escrito'}
+              </p>
+            </div>
+          </label>
+
           <div className="flex flex-wrap gap-x-6 gap-y-3 pt-1">
             {profileIban && (
               <label className="flex items-center gap-2 cursor-pointer select-none">

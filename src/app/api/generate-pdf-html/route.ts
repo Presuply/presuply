@@ -4,7 +4,8 @@ import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 
-const MODEL = 'claude-opus-4-6'
+const MODEL = 'claude-opus-4-7'
+const MODEL_SONNET = 'claude-sonnet-4-6'
 
 const SYSTEM_PROMPT = `Eres un experto maquetador de documentos profesionales especializados en presupuestos de construcción y reformas en España. Tu tarea es generar HTML completo y autocontenido con CSS inline que produzca un presupuesto profesional de máxima calidad visual.
 
@@ -79,6 +80,24 @@ FORMATO DE NÚMEROS:
 - Nunca uses el formato anglosajón con punto decimal.
 
 IDIOMA: Todo en español. Siempre.`
+
+const EXPAND_SYSTEM_PROMPT = `Eres un experto en construcción y reformas en España. Recibes una lista de partidas de presupuesto con descripciones cortas escritas por un profesional.
+Tu tarea es expandir cada descripción a texto técnico profesional completo, como aparecería en un presupuesto formal de construcción.
+
+REGLAS ESTRICTAS:
+- Mantén EXACTAMENTE la cantidad, unidad y precio del original — nunca los cambies
+- Solo expande el campo 'descripcion'
+- La descripción expandida debe incluir: tipo de material, marca si se puede inferir, especificaciones técnicas, método de colocación, incluyendo medios auxiliares
+- Si la descripción ya es técnica y completa, devuélvela tal cual sin cambios
+- Si no puedes inferir especificaciones, expande con términos genéricos profesionales del sector
+- Devuelve SOLO JSON válido, sin texto adicional
+
+Ejemplo:
+Input: { "descripcion": "pladur cocina 30m2", "cantidad": 30, "unidad": "m²", "precio_unitario": 22, "total": 660 }
+Output: { "descripcion": "Suministro y colocación de placa de yeso laminado tipo estándar de 13mm de espesor sobre estructura metálica galvanizada, incluyendo tratamiento de juntas con cinta y pasta, lijado y medios auxiliares. Medida la superficie ejecutada.", "cantidad": 30, "unidad": "m²", "precio_unitario": 22, "total": 660 }
+
+Formato de respuesta — array JSON con las mismas partidas pero con descripciones expandidas:
+[{ "descripcion": "...", "unidad": "...", "cantidad": 0, "precio_unitario": 0, "total": 0 }]`
 
 // Edge-compatible base64 encoding
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -259,6 +278,65 @@ function generateFallbackHtml(data: {
 </html>`
 }
 
+type LineItemData = {
+  chapter_id: string | null
+  description: string
+  unit: string
+  quantity: number
+  unit_price: number
+  total: number
+}
+
+async function expandDescriptions(
+  lineItems: LineItemData[],
+  anthropic: Anthropic,
+): Promise<LineItemData[]> {
+  if (lineItems.length === 0) return lineItems
+  try {
+    const input = lineItems.map(i => ({
+      descripcion: i.description,
+      unidad: i.unit,
+      cantidad: i.quantity,
+      precio_unitario: i.unit_price,
+      total: i.total,
+    }))
+
+    const response = await anthropic.messages.create({
+      model: MODEL_SONNET,
+      max_tokens: 4096,
+      system: [{ type: 'text', text: EXPAND_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+      messages: [{
+        role: 'user',
+        content: `Expande las descripciones de estas partidas manteniendo todos los valores numéricos exactos: ${JSON.stringify(input)}`,
+      }],
+    })
+
+    const usage = response.usage as Anthropic.Usage & {
+      cache_creation_input_tokens?: number
+      cache_read_input_tokens?: number
+    }
+    console.log('Expand descriptions tokens:', JSON.stringify({
+      input: usage.input_tokens,
+      output: usage.output_tokens,
+      cache_creation: usage.cache_creation_input_tokens ?? 0,
+      cache_read: usage.cache_read_input_tokens ?? 0,
+    }))
+
+    const raw = response.content[0]?.type === 'text' ? response.content[0].text : ''
+    const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
+    const expanded = JSON.parse(cleaned) as Array<{ descripcion: string }>
+
+    if (!Array.isArray(expanded) || expanded.length !== lineItems.length) return lineItems
+
+    return lineItems.map((item, i) => ({
+      ...item,
+      description: expanded[i]?.descripcion ?? item.description,
+    }))
+  } catch {
+    return lineItems // fallback seguro: usa descripciones originales
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -346,9 +424,18 @@ export async function POST(request: Request) {
       },
     }
 
-    // Sin plantilla → HTML de fallback, sin llamar a Claude
+    // Crear cliente Anthropic una vez para Sonnet y Opus
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+    // Paso 1: expandir descripciones con Sonnet (si está activado)
+    const expandedLineItems = b.expand_descriptions !== false
+      ? await expandDescriptions(budgetData.lineItems, anthropic)
+      : budgetData.lineItems
+    const finalBudgetData = { ...budgetData, lineItems: expandedLineItems }
+
+    // Sin plantilla → HTML de fallback, sin llamar a Opus
     if (!p?.template_url) {
-      return NextResponse.json({ html: generateFallbackHtml(budgetData) })
+      return NextResponse.json({ html: generateFallbackHtml(finalBudgetData) })
     }
 
     // Con plantilla → descargar y enviar a Claude
@@ -357,12 +444,12 @@ export async function POST(request: Request) {
       .createSignedUrl(p.template_url, 60)
 
     if (!signedData?.signedUrl) {
-      return NextResponse.json({ html: generateFallbackHtml(budgetData) })
+      return NextResponse.json({ html: generateFallbackHtml(finalBudgetData) })
     }
 
     const templateResponse = await fetch(signedData.signedUrl)
     if (!templateResponse.ok) {
-      return NextResponse.json({ html: generateFallbackHtml(budgetData) })
+      return NextResponse.json({ html: generateFallbackHtml(finalBudgetData) })
     }
 
     const buffer = await templateResponse.arrayBuffer()
@@ -386,8 +473,6 @@ export async function POST(request: Request) {
           },
         }
 
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
     const claudeResponse = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 8096,
@@ -398,7 +483,7 @@ export async function POST(request: Request) {
           templateBlock,
           {
             type: 'text',
-            text: `Genera el presupuesto profesional en HTML completo siguiendo las instrucciones del sistema.\n\nDATOS DEL PRESUPUESTO:\n${JSON.stringify(budgetData, null, 2)}\n\nLa imagen adjunta es la plantilla del usuario. Úsala como referencia de estructura y mejora su presentación visual.\n\nDevuelve SOLO el HTML desde <!DOCTYPE html> hasta </html>.`,
+            text: `Genera el presupuesto profesional en HTML completo siguiendo las instrucciones del sistema.\n\nDATOS DEL PRESUPUESTO:\n${JSON.stringify(finalBudgetData, null, 2)}\n\nLa imagen adjunta es la plantilla del usuario. Úsala como referencia de estructura y mejora su presentación visual.\n\nDevuelve SOLO el HTML desde <!DOCTYPE html> hasta </html>.`,
           },
         ],
       }],
