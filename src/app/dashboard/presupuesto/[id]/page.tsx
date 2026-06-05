@@ -66,6 +66,8 @@ interface BudgetHeader {
   profit_rate: number
   extras_description: string
   extras_amount: number
+  show_iban: boolean
+  show_signature: boolean
 }
 
 interface DeleteConfirm {
@@ -295,6 +297,7 @@ export default function PresupuestoEditorPage() {
   const [generatingPdf, setGeneratingPdf] = useState(false)
   const [chapters, setChapters] = useState<EditableChapter[]>([])
   const [lineItems, setLineItems] = useState<EditableLineItem[]>([])
+  const [profileIban, setProfileIban] = useState<string | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
@@ -304,7 +307,7 @@ export default function PresupuestoEditorPage() {
     budget_number: 0, tax_type: 'IGIC', tax_rate: 7, valid_days: 30,
     issued_date: new Date().toISOString().slice(0, 10), invoice_number: '',
     overhead_enabled: false, overhead_rate: 13, profit_enabled: false, profit_rate: 6,
-    extras_description: '', extras_amount: 0,
+    extras_description: '', extras_amount: 0, show_iban: false, show_signature: false,
   })
 
   const sensors = useSensors(
@@ -320,9 +323,13 @@ export default function PresupuestoEditorPage() {
       if (!user) { router.replace('/login'); return }
       setUserId(user.id)
 
-      const { data: b } = await supabase.from('budgets').select('*').eq('id', id).single()
+      const [{ data: b }, { data: profile }] = await Promise.all([
+        supabase.from('budgets').select('*').eq('id', id).single(),
+        supabase.from('profiles').select('iban').eq('id', user.id).single(),
+      ])
       if (!b) { setLoading(false); return }
       if (b.pdf_url) setPdfUrl(b.pdf_url)
+      setProfileIban(profile?.iban ?? null)
 
       setBudget({
         client_name: b.client_name ?? '', client_email: b.client_email ?? '',
@@ -338,6 +345,8 @@ export default function PresupuestoEditorPage() {
         profit_rate: Number(b.profit_rate) || 6,
         extras_description: b.extras_description ?? '',
         extras_amount: Number(b.extras_amount) || 0,
+        show_iban: b.show_iban ?? false,
+        show_signature: b.show_signature ?? false,
       })
 
       const [{ data: rawChapters }, { data: rawItems }] = await Promise.all([
@@ -565,6 +574,7 @@ export default function PresupuestoEditorPage() {
         overhead_enabled: budget.overhead_enabled, overhead_rate: budget.overhead_rate,
         profit_enabled: budget.profit_enabled, profit_rate: budget.profit_rate,
         extras_description: budget.extras_description || null, extras_amount: budget.extras_amount,
+        show_iban: budget.show_iban, show_signature: budget.show_signature,
         subtotal, tax_amount: taxAmount, total: totalAmount,
       })
       .eq('id', id)
@@ -796,6 +806,22 @@ export default function PresupuestoEditorPage() {
                 onChange={e => updateBudgetField('invoice_number', e.target.value)}
                 placeholder="Ej. 26/001" className={inputClass} />
             </div>
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-3 pt-1">
+            {profileIban && (
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={budget.show_iban}
+                  onChange={e => updateBudgetField('show_iban', e.target.checked)}
+                  className="accent-[#FF6A00] w-4 h-4" />
+                <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">Mostrar IBAN en el PDF</span>
+              </label>
+            )}
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={budget.show_signature}
+                onChange={e => updateBudgetField('show_signature', e.target.checked)}
+                className="accent-[#FF6A00] w-4 h-4" />
+              <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">Incluir sección de firma</span>
+            </label>
           </div>
         </section>
 

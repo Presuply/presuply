@@ -4,25 +4,81 @@ import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 
-const MODEL = 'claude-sonnet-4-6'
+const MODEL = 'claude-opus-4-6'
 
-const SYSTEM_PROMPT = `Eres un experto en maquetación de presupuestos de construcción en España. Recibes una plantilla de presupuesto existente y los datos de un nuevo presupuesto. Tu tarea es generar HTML completo (con CSS inline) que imite exactamente la estructura y disposición de la plantilla, sustituyendo los datos antiguos por los nuevos.
+const SYSTEM_PROMPT = `Eres un experto maquetador de documentos profesionales especializados en presupuestos de construcción y reformas en España. Tu tarea es generar HTML completo y autocontenido con CSS inline que produzca un presupuesto profesional de máxima calidad visual.
 
-REGLAS:
-1. Analiza la plantilla: identifica la disposición (columnas de datos, tabla de partidas, resumen de precios, pie de página)
-2. Reproduce esa misma estructura en HTML con CSS inline
-3. Sustituye TODOS los datos de la plantilla por los datos nuevos
-4. Mantén el mismo orden de secciones y campos
-5. Usa los mismos estilos visuales aproximados (negrita donde había negrita, tablas donde había tablas, dos columnas donde había dos columnas)
-6. El HTML debe estar listo para imprimir en A4
-7. Devuelve SOLO el HTML completo desde <!DOCTYPE html> hasta </html>, sin explicaciones ni marcas de código
+ANÁLISIS DE LA PLANTILLA:
+Si recibes una imagen de plantilla del usuario, analiza:
+- Disposición general (columnas de datos, márgenes, espaciado)
+- Jerarquía visual (qué destaca, qué es secundario)
+- Estilo tipográfico aproximado
+- Presencia de líneas, bordes, separadores
+Usa esa estructura como referencia, pero mejora la presentación visual: más limpieza, mejor tipografía, mejor uso del espacio. No copies pixel a pixel — interpreta y mejora.
 
-DATOS DEL PRESUPUESTO que recibirás en JSON:
-- empresa: nombre, nif, dirección, teléfono, email, iban
-- cliente: nombre, nif, dirección, teléfono, email
-- presupuesto: número, fecha, validez, título
-- capitulos: array de { nombre, partidas: [{ descripcion, unidad, cantidad, precio_unitario, total }] }
-- resumen: subtotal, gastos_generales, beneficio_industrial, extras, base_imponible, tipo_impuesto, porcentaje_impuesto, impuesto, total_final`
+Si no hay plantilla, genera un diseño propio profesional y limpio siguiendo las reglas de abajo.
+
+REGLAS DE DISEÑO OBLIGATORIAS:
+1. Tipografía: usa Arial, Helvetica o sans-serif del sistema. Nunca fuentes externas — el HTML debe funcionar sin conexión.
+2. Página A4 (210mm × 297mm), márgenes 15mm por todos los lados.
+3. Todo el CSS es inline — no uses <style> externo ni clases.
+4. Paleta neutra y profesional: blanco, gris muy claro (#f8f8f8), gris medio (#666), negro suave (#1a1a1a). Si el usuario tiene color de marca, úsalo solo en la cabecera y acento.
+5. El HTML debe empezar con <!DOCTYPE html> y terminar con </html>.
+6. Nunca incluyas explicaciones, comentarios ni texto fuera del HTML.
+
+ESTRUCTURA OBLIGATORIA DEL DOCUMENTO:
+
+CABECERA (dos columnas):
+- Izquierda: si hay logo, mostrarlo (máx 80px alto). Nombre de empresa en negrita 16px. NIF, dirección, teléfono, email en 11px gris.
+- Derecha: 'PRESUPUESTO' en mayúsculas negrita 20px. Número de presupuesto, fecha de emisión, validez en días. Todo alineado a la derecha.
+- Separador horizontal fino (#ddd) bajo la cabecera.
+
+DATOS DEL CLIENTE (si los hay):
+- Bloque 'DATOS DEL CLIENTE' con fondo gris muy claro (#f8f8f8), padding 8px, border-radius 4px.
+- Nombre/razón social, NIF/CIF, dirección, teléfono, email.
+- Solo mostrar los campos que tengan valor.
+
+TABLA DE PARTIDAS (por capítulos):
+- Cabecera de tabla: fondo #1a1a1a, texto blanco, 11px uppercase. Columnas: DESCRIPCIÓN (50%) | UDS. (10%) | PRECIO/UD. (18%) | TOTAL (22%)
+- Por cada capítulo:
+  * Fila de capítulo: fondo #f0f0f0, texto negrita 12px, nombre del capítulo a la izquierda, subtotal a la derecha.
+  * Filas de partidas: fondo blanco y #fafafa alternado, 11px.
+  * Números alineados a la derecha, separador decimal coma.
+- Última fila: borde superior doble.
+
+RESUMEN DE PRECIOS (alineado a la derecha, ancho 45%):
+Mostrar solo las líneas con valor > 0:
+  Presupuesto de ejecución material:   X.XXX,XX €
+  Gastos generales X%:                 X.XXX,XX €  (si activado)
+  Beneficio industrial X%:             X.XXX,XX €  (si activado)
+  [descripción extras]:                X.XXX,XX €  (si > 0)
+  ─────────────────────────────────────────────────
+  Base imponible:                      X.XXX,XX €
+  IGIC X% / IVA X%:                   X.XXX,XX €
+  ═════════════════════════════════════════════════
+  TOTAL:                               X.XXX,XX €  (negrita 14px)
+
+CONDICIONES (si hay notas):
+- Bloque con título 'CONDICIONES' en gris, texto 10px.
+
+IBAN (solo si show_iban = true y hay IBAN):
+- 'Número de cuenta (IBAN): XX XX XXXX...' en 10px gris.
+
+FIRMA (solo si show_signature = true):
+- Tres columnas: 'Lugar y fecha:', 'Firma del cliente:', 'Firma y sello:'
+- Línea horizontal bajo cada una para firmar.
+- Espacio de 40px sobre las líneas.
+
+PIE DE PÁGINA:
+- Línea separadora fina.
+- Datos completos de la empresa en 9px gris centrado.
+- Si hay varias páginas: 'Página X de Y' a la derecha.
+
+FORMATO DE NÚMEROS:
+- Siempre con separador de miles (punto) y decimal (coma): 1.234,56 €
+- Nunca uses el formato anglosajón con punto decimal.
+
+IDIOMA: Todo en español. Siempre.`
 
 // Edge-compatible base64 encoding
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -55,8 +111,10 @@ function generateFallbackHtml(data: {
   chapters: Array<{ id: string; name: string; position: number }>
   lineItems: Array<{ chapter_id: string | null; description: string; unit: string; quantity: number; unit_price: number; total: number }>
   totals: { subtotal: number; overhead: number; overheadRate: number; overheadEnabled: boolean; profit: number; profitRate: number; profitEnabled: boolean; extras: number; extrasDesc: string; baseImponible: number; taxType: string; taxRate: number; taxAmount: number; total: number }
+  show_iban: boolean
+  show_signature: boolean
 }): string {
-  const { company, client, budget, chapters, lineItems, totals } = data
+  const { company, client, budget, chapters, lineItems, totals, show_iban, show_signature } = data
 
   function renderItemRow(i: { description: string; unit: string; quantity: number; unit_price: number; total: number }) {
     return `
@@ -177,11 +235,26 @@ function generateFallbackHtml(data: {
     </table>
   </div>
 
-  <!-- IBAN al pie si existe -->
-  ${company.iban ? `
-  <div style="border-top:1px solid #d1d5db;padding-top:6px;font-size:8.5pt;color:#6b7280;">
-    Forma de pago — Transferencia bancaria: <strong>${company.iban}</strong>
+  <!-- IBAN -->
+  ${show_iban && company.iban ? `
+  <div style="margin-top:6mm;padding-top:5px;border-top:1px solid #ddd;font-size:9.5pt;color:#666;">
+    Número de cuenta (IBAN): <strong>${company.iban}</strong>
   </div>` : ''}
+
+  <!-- Sección de firma -->
+  ${show_signature ? `
+  <div style="margin-top:10mm;display:flex;gap:16px;">
+    ${['Lugar y fecha:', 'Firma del cliente:', 'Firma y sello:'].map(label => `
+    <div style="flex:1;text-align:center;">
+      <div style="height:40px;"></div>
+      <div style="border-top:1px solid #1a1a1a;padding-top:5px;font-size:9.5pt;color:#666;">${label}</div>
+    </div>`).join('')}
+  </div>` : ''}
+
+  <!-- Pie de página -->
+  <div style="margin-top:8mm;padding-top:5px;border-top:1px solid #ddd;font-size:9pt;color:#999;text-align:center;">
+    ${[company.name, company.nif ? `NIF: ${company.nif}` : '', company.address, company.phone, company.email].filter(Boolean).join(' · ')}
+  </div>
 </body>
 </html>`
 }
@@ -240,6 +313,8 @@ export async function POST(request: Request) {
         date: fmtDate(b.issued_date),
         validDays: b.valid_days ?? 30,
       },
+      show_iban: !!(b.show_iban && p?.iban),
+      show_signature: !!b.show_signature,
       chapters: chapters.map(c => ({
         id: c.id,
         name: c.name,
@@ -323,7 +398,7 @@ export async function POST(request: Request) {
           templateBlock,
           {
             type: 'text',
-            text: `Genera el HTML del presupuesto con los siguientes datos:\n\n${JSON.stringify(budgetData, null, 2)}\n\nLas partidas están agrupadas en capítulos (campo "chapters" + "chapter_id" en cada partida). Muestra cada capítulo con su nombre como cabecera y su subtotal, seguido de sus partidas. La plantilla de referencia está adjunta. Imita su estructura exactamente y reemplaza todos los datos por los nuevos.`,
+            text: `Genera el presupuesto profesional en HTML completo siguiendo las instrucciones del sistema.\n\nDATOS DEL PRESUPUESTO:\n${JSON.stringify(budgetData, null, 2)}\n\nLa imagen adjunta es la plantilla del usuario. Úsala como referencia de estructura y mejora su presentación visual.\n\nDevuelve SOLO el HTML desde <!DOCTYPE html> hasta </html>.`,
           },
         ],
       }],
