@@ -53,10 +53,20 @@ export interface Budget {
   updated_at: string
 }
 
+export interface Chapter {
+  id: string
+  budget_id: string
+  user_id: string
+  name: string
+  position: number
+  created_at: string
+}
+
 export interface LineItem {
   id: string
   budget_id: string
   user_id: string
+  chapter_id: string | null
   description: string
   unit: string | null
   quantity: number

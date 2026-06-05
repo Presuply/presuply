@@ -21,7 +21,7 @@ DATOS DEL PRESUPUESTO que recibirás en JSON:
 - empresa: nombre, nif, dirección, teléfono, email, iban
 - cliente: nombre, nif, dirección, teléfono, email
 - presupuesto: número, fecha, validez, título
-- partidas: descripción, unidad, cantidad, precio_unitario, total
+- capitulos: array de { nombre, partidas: [{ descripcion, unidad, cantidad, precio_unitario, total }] }
 - resumen: subtotal, gastos_generales, beneficio_industrial, extras, base_imponible, tipo_impuesto, porcentaje_impuesto, impuesto, total_final`
 
 // Edge-compatible base64 encoding
@@ -52,19 +52,51 @@ function generateFallbackHtml(data: {
   company: { name: string; nif: string; address: string; phone: string; email: string; iban: string }
   client: { name: string; nif: string; address: string; phone: string; email: string }
   budget: { ref: string; date: string; validDays: number }
-  lineItems: Array<{ description: string; unit: string; quantity: number; unit_price: number; total: number }>
+  chapters: Array<{ id: string; name: string; position: number }>
+  lineItems: Array<{ chapter_id: string | null; description: string; unit: string; quantity: number; unit_price: number; total: number }>
   totals: { subtotal: number; overhead: number; overheadRate: number; overheadEnabled: boolean; profit: number; profitRate: number; profitEnabled: boolean; extras: number; extrasDesc: string; baseImponible: number; taxType: string; taxRate: number; taxAmount: number; total: number }
 }): string {
-  const { company, client, budget, lineItems, totals } = data
+  const { company, client, budget, chapters, lineItems, totals } = data
 
-  const itemRows = lineItems.map(i => `
+  function renderItemRow(i: { description: string; unit: string; quantity: number; unit_price: number; total: number }) {
+    return `
     <tr>
       <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9.5pt;">${i.description}</td>
       <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9.5pt;text-align:center;">${i.unit || '—'}</td>
       <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9.5pt;text-align:right;">${fmt(i.quantity)}</td>
       <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9.5pt;text-align:right;">${fmt(i.unit_price)} €</td>
       <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9.5pt;text-align:right;font-weight:500;">${fmt(i.total)} €</td>
-    </tr>`).join('')
+    </tr>`
+  }
+
+  let itemRows: string
+  if (chapters.length > 0) {
+    const sorted = [...chapters].sort((a, b) => a.position - b.position)
+    const rows: string[] = []
+    for (const ch of sorted) {
+      const chItems = lineItems.filter(i => i.chapter_id === ch.id)
+      if (chItems.length === 0) continue
+      const chSubtotal = chItems.reduce((s, i) => s + i.total, 0)
+      rows.push(`
+    <tr style="background:#f3f4f6;">
+      <td colspan="4" style="padding:6px 8px;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">${ch.name}</td>
+      <td style="padding:6px 8px;font-size:9pt;font-weight:700;text-align:right;">${fmt(chSubtotal)} €</td>
+    </tr>`)
+      rows.push(...chItems.map(renderItemRow))
+    }
+    // items sin capítulo (presupuestos migrados)
+    const orphans = lineItems.filter(i => !i.chapter_id || !chapters.find(c => c.id === i.chapter_id))
+    if (orphans.length > 0) {
+      rows.push(`
+    <tr style="background:#f3f4f6;">
+      <td colspan="5" style="padding:6px 8px;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Sin capítulo</td>
+    </tr>`)
+      rows.push(...orphans.map(renderItemRow))
+    }
+    itemRows = rows.join('')
+  } else {
+    itemRows = lineItems.map(renderItemRow).join('')
+  }
 
   const summaryRows = [
     `<tr><td style="padding:4px 10px;font-size:9.5pt;">Presupuesto de ejecución material</td><td style="padding:4px 10px;font-size:9.5pt;text-align:right;">${fmt(totals.subtotal)} €</td></tr>`,
@@ -163,15 +195,17 @@ export async function POST(request: Request) {
     const { budgetId } = await request.json()
     if (!budgetId) return NextResponse.json({ error: 'budgetId requerido' }, { status: 400 })
 
-    // Cargar presupuesto, partidas y perfil en paralelo
-    const [budgetRes, itemsRes, profileRes] = await Promise.all([
+    // Cargar presupuesto, partidas, capítulos y perfil en paralelo
+    const [budgetRes, itemsRes, chaptersRes, profileRes] = await Promise.all([
       supabase.from('budgets').select('*').eq('id', budgetId).eq('user_id', user.id).single(),
       supabase.from('line_items').select('*').eq('budget_id', budgetId).order('position'),
+      supabase.from('chapters').select('*').eq('budget_id', budgetId).order('position'),
       supabase.from('profiles').select('*').eq('id', user.id).single(),
     ])
 
     const b = budgetRes.data
     const items = itemsRes.data ?? []
+    const chapters = chaptersRes.data ?? []
     const p = profileRes.data
 
     if (!b) return NextResponse.json({ error: 'Presupuesto no encontrado' }, { status: 404 })
@@ -206,7 +240,13 @@ export async function POST(request: Request) {
         date: fmtDate(b.issued_date),
         validDays: b.valid_days ?? 30,
       },
+      chapters: chapters.map(c => ({
+        id: c.id,
+        name: c.name,
+        position: c.position,
+      })),
       lineItems: items.map(i => ({
+        chapter_id: i.chapter_id ?? null,
         description: i.description,
         unit: i.unit ?? '',
         quantity: Number(i.quantity),
@@ -283,7 +323,7 @@ export async function POST(request: Request) {
           templateBlock,
           {
             type: 'text',
-            text: `Genera el HTML del presupuesto con los siguientes datos:\n\n${JSON.stringify(budgetData, null, 2)}\n\nLa plantilla de referencia está adjunta. Imita su estructura exactamente y reemplaza todos los datos por los nuevos.`,
+            text: `Genera el HTML del presupuesto con los siguientes datos:\n\n${JSON.stringify(budgetData, null, 2)}\n\nLas partidas están agrupadas en capítulos (campo "chapters" + "chapter_id" en cada partida). Muestra cada capítulo con su nombre como cabecera y su subtotal, seguido de sus partidas. La plantilla de referencia está adjunta. Imita su estructura exactamente y reemplaza todos los datos por los nuevos.`,
           },
         ],
       }],
