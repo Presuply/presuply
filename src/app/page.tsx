@@ -15,16 +15,16 @@ export default function Home() {
       </p>
       <div className="mt-8 flex flex-col sm:flex-row gap-3 w-full max-w-xs sm:max-w-none sm:w-auto">
         <Link
-          href="/login"
+          href="/register"
           className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-6 py-3 text-base transition-colors text-center"
         >
-          Iniciar sesión
+          Empezar gratis
         </Link>
         <Link
-          href="/register"
+          href="/login"
           className="bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#D5DCE4] dark:hover:bg-[#4A5A6C] font-semibold rounded-[8px] px-6 py-3 text-base transition-colors text-center"
         >
-          Crear cuenta
+          Iniciar sesión
         </Link>
       </div>
     </main>
