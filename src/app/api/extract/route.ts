@@ -153,8 +153,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // 3. Descargar imágenes de Storage y convertir a base64
-    const imageBlocks: Anthropic.ImageBlockParam[] = []
+    // 3. Descargar archivos de Storage y construir bloques de contenido
+    const contentBlocks: Anthropic.ContentBlockParam[] = []
 
     for (const path of uploadPaths) {
       const { data: signedData } = await supabase.storage
@@ -163,24 +163,37 @@ export async function POST(request: Request) {
 
       if (!signedData?.signedUrl) continue
 
-      const imageResponse = await fetch(signedData.signedUrl)
-      if (!imageResponse.ok) continue
+      const fileResponse = await fetch(signedData.signedUrl)
+      if (!fileResponse.ok) continue
 
-      const buffer = await imageResponse.arrayBuffer()
+      const buffer = await fileResponse.arrayBuffer()
+      const contentType = fileResponse.headers.get('content-type') ?? ''
+      const isPdf = contentType.includes('application/pdf') || path.toLowerCase().endsWith('.pdf')
 
-      imageBlocks.push({
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: toValidMediaType(imageResponse.headers.get('content-type')),
-          data: arrayBufferToBase64(buffer),
-        },
-      })
+      if (isPdf) {
+        contentBlocks.push({
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: arrayBufferToBase64(buffer),
+          },
+        } as unknown as Anthropic.ContentBlockParam)
+      } else {
+        contentBlocks.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: toValidMediaType(contentType),
+            data: arrayBufferToBase64(buffer),
+          },
+        })
+      }
     }
 
-    if (imageBlocks.length === 0 && !text) {
+    if (contentBlocks.length === 0 && !text) {
       return NextResponse.json(
-        { error: 'No se pudieron descargar las imágenes y no hay texto' },
+        { error: 'No se pudieron descargar los archivos y no hay texto' },
         { status: 422 }
       )
     }
@@ -189,7 +202,7 @@ export async function POST(request: Request) {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     const userContent: Anthropic.ContentBlockParam[] = [
-      ...imageBlocks,
+      ...contentBlocks,
       {
         type: 'text',
         text: text ? `${USER_PROMPT}\n\nTexto adicional del profesional:\n${text}` : USER_PROMPT,
