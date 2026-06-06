@@ -144,52 +144,54 @@ function DroppableFolderCard({
             : 'border-[#D5DCE4] dark:border-[#3A4A5C]'
         }`}
       >
-        <button type="button" onClick={onToggle}
-          className="w-full flex items-center gap-3 px-3 py-3 text-left">
-          <FolderIcon color={folder.color} size={22} />
-          <div className="flex-1 min-w-0">
-            {isRenaming ? (
-              <input
-                ref={nameRef}
-                type="text"
-                value={renameName}
-                onChange={e => setRenameName(e.target.value)}
-                onBlur={onRenameConfirm}
-                onKeyDown={e => { if (e.key === 'Enter') onRenameConfirm(); if (e.key === 'Escape') { setRenameName(folder.name); onRenameConfirm() } }}
-                onClick={e => e.stopPropagation()}
-                className="w-full bg-transparent text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] focus:outline-none focus:ring-1 focus:ring-[#FF6A00] rounded px-1"
-              />
-            ) : (
-              <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{folder.name}</p>
-            )}
-            <p className="text-xs text-[#A9B5C2]">{count} presupuesto{count !== 1 ? 's' : ''}</p>
-          </div>
-          <span className="text-[#A9B5C2] text-xs shrink-0">{isExpanded ? '▲' : '▼'}</span>
-        </button>
-
-        {/* Menú ⋮ */}
-        <div className="absolute top-2 right-8" onClick={e => e.stopPropagation()}>
-          <button type="button"
-            onClick={() => setOpenMenuId(openMenuId === folder.id ? null : folder.id)}
-            className="w-7 h-7 flex items-center justify-center text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] rounded transition-colors text-lg">
-            ⋮
-          </button>
-          {openMenuId === folder.id && (
-            <div className="absolute right-0 top-8 bg-white dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[8px] shadow-lg z-20 min-w-[160px]">
-              <button type="button" onClick={onRenameStart}
-                className="w-full text-left px-4 py-2.5 text-sm text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] transition-colors rounded-t-[8px]">
-                Renombrar
-              </button>
-              <button type="button" onClick={() => { setColorPickerFolderId(showColorPicker ? null : folder.id); setOpenMenuId(null) }}
-                className="w-full text-left px-4 py-2.5 text-sm text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] transition-colors">
-                Cambiar color
-              </button>
-              <button type="button" onClick={onDeleteRequest}
-                className="w-full text-left px-4 py-2.5 text-sm text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors rounded-b-[8px]">
-                Eliminar carpeta
-              </button>
+        <div className="flex items-center">
+          <button type="button" onClick={onToggle}
+            className="flex flex-1 items-center gap-3 px-3 py-3 text-left min-w-0">
+            <FolderIcon color={folder.color} size={22} />
+            <div className="flex-1 min-w-0">
+              {isRenaming ? (
+                <input
+                  ref={nameRef}
+                  type="text"
+                  value={renameName}
+                  onChange={e => setRenameName(e.target.value)}
+                  onBlur={onRenameConfirm}
+                  onKeyDown={e => { if (e.key === 'Enter') onRenameConfirm(); if (e.key === 'Escape') { setRenameName(folder.name); onRenameConfirm() } }}
+                  onClick={e => e.stopPropagation()}
+                  className="w-full bg-transparent text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] focus:outline-none focus:ring-1 focus:ring-[#FF6A00] rounded px-1"
+                />
+              ) : (
+                <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{folder.name}</p>
+              )}
+              <p className="text-xs text-[#A9B5C2]">{count} presupuesto{count !== 1 ? 's' : ''}</p>
             </div>
-          )}
+            <span className="text-[#A9B5C2] text-xs shrink-0">{isExpanded ? '▲' : '▼'}</span>
+          </button>
+
+          {/* Menú ⋮ — hermano en flex, sin posicionamiento absoluto */}
+          <div className="relative shrink-0 pr-1" onClick={e => e.stopPropagation()}>
+            <button type="button"
+              onClick={() => setOpenMenuId(openMenuId === folder.id ? null : folder.id)}
+              className="w-7 h-7 flex items-center justify-center text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] rounded transition-colors text-lg">
+              ⋮
+            </button>
+            {openMenuId === folder.id && (
+              <div className="absolute right-0 top-8 bg-white dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[8px] shadow-lg z-20 min-w-[160px]">
+                <button type="button" onClick={onRenameStart}
+                  className="w-full text-left px-4 py-2.5 text-sm text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] transition-colors rounded-t-[8px]">
+                  Renombrar
+                </button>
+                <button type="button" onClick={() => { setColorPickerFolderId(showColorPicker ? null : folder.id); setOpenMenuId(null) }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] transition-colors">
+                  Cambiar color
+                </button>
+                <button type="button" onClick={onDeleteRequest}
+                  className="w-full text-left px-4 py-2.5 text-sm text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors rounded-b-[8px]">
+                  Eliminar carpeta
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -450,9 +452,9 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-3 min-w-0">
-                <img src="/images/logo.svg" alt="Presuply" className="h-7 w-auto shrink-0" />
-                <h1 className="text-xl font-bold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">Presupuestos</h1>
+              <div className="flex items-center gap-3 shrink-0">
+                <img src="/images/logo.svg" alt="Presuply" className="h-7 w-auto" />
+                <h1 className="text-xl font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">Presupuestos</h1>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <button type="button" onClick={() => setSearchActive(true)}
