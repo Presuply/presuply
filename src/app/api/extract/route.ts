@@ -111,11 +111,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // 2. Verificar suscripción y límites del plan
+    // 2. Resolver cuenta: si es miembro de equipo, usar el perfil del owner
+    const { data: teamRow } = await supabase
+      .from('teams')
+      .select('owner_id')
+      .eq('member_id', user.id)
+      .maybeSingle()
+
+    const profileOwnerId = teamRow?.owner_id ?? user.id
+
     const { data: profile } = await supabase
       .from('profiles')
       .select('subscription_status, budgets_used, is_team, plan_key, budgets_this_month, month_reset_at')
-      .eq('id', user.id)
+      .eq('id', profileOwnerId)
       .single()
 
     if (!profile?.is_team) {
@@ -348,7 +356,7 @@ export async function POST(request: Request) {
         .eq('user_id', user.id)
     }
 
-    // Incrementar contadores (no aplica a cuentas del equipo)
+    // Incrementar contadores en el perfil del owner (no aplica a is_team)
     if (!profile?.is_team) {
       await supabase
         .from('profiles')
@@ -356,7 +364,7 @@ export async function POST(request: Request) {
           budgets_used: (profile?.budgets_used ?? 0) + 1,
           budgets_this_month: (profile?.budgets_this_month ?? 0) + 1,
         })
-        .eq('id', user.id)
+        .eq('id', profileOwnerId)
     }
 
     return NextResponse.json(parsed)

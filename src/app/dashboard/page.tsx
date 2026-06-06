@@ -228,6 +228,7 @@ export default function DashboardPage() {
   const [planKey, setPlanKey] = useState<PlanKey>('trial')
   const [isTeam, setIsTeam] = useState(false)
   const [showFolderUpgradeModal, setShowFolderUpgradeModal] = useState(false)
+  const [ownerEmail, setOwnerEmail] = useState<string | null>(null)
 
   // Búsqueda
   const [searchActive, setSearchActive] = useState(false)
@@ -263,10 +264,11 @@ export default function DashboardPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.replace('/login'); return }
 
-      const [foldersRes, budgetsRes, profileRes] = await Promise.all([
+      const [foldersRes, budgetsRes, profileRes, teamMemberRes] = await Promise.all([
         supabase.from('folders').select('*').order('position'),
         supabase.from('budgets').select('*').order('updated_at', { ascending: false }),
         supabase.from('profiles').select('subscription_status, budgets_used, plan_key, is_team').eq('id', user.id).single(),
+        supabase.from('teams').select('owner_id').eq('member_id', user.id).maybeSingle(),
       ])
 
       setFolders(foldersRes.data ?? [])
@@ -276,6 +278,15 @@ export default function DashboardPage() {
         setBudgetsUsed(profileRes.data.budgets_used ?? 0)
         setPlanKey((profileRes.data.plan_key ?? 'trial') as PlanKey)
         setIsTeam(profileRes.data.is_team ?? false)
+      }
+
+      if (teamMemberRes.data?.owner_id) {
+        const { data: ownerProfile } = await supabase
+          .from('profiles')
+          .select('full_name, company_name')
+          .eq('id', teamMemberRes.data.owner_id)
+          .single()
+        setOwnerEmail(ownerProfile?.company_name || ownerProfile?.full_name || 'el propietario')
       }
       setLoading(false)
     }
@@ -482,6 +493,15 @@ export default function DashboardPage() {
             </>
           )}
         </div>
+
+        {/* Banner miembro de equipo */}
+        {ownerEmail && (
+          <div className="rounded-[10px] bg-[#EDF0F4] dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] px-4 py-2.5 flex items-center gap-2">
+            <span className="text-xs text-[#6B7B8C] dark:text-[#A9B5C2]">
+              Estás usando el plan de <strong className="text-[#0D1B2A] dark:text-[#F4F6F9]">{ownerEmail}</strong>
+            </span>
+          </div>
+        )}
 
         {/* Banner trial */}
         {isTrial && !loading && (

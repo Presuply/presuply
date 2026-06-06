@@ -51,6 +51,14 @@ export default function PerfilPage() {
   const [budgetsThisMonth, setBudgetsThisMonth] = useState(0)
   const [isTeam, setIsTeam] = useState(false)
   const [openingPortal, setOpeningPortal] = useState(false)
+  const [teamMembers, setTeamMembers] = useState<{ id: string; email: string; created_at: string }[]>([])
+  const [teamLoading, setTeamLoading] = useState(false)
+  const [newMemberEmail, setNewMemberEmail] = useState('')
+  const [newMemberPassword, setNewMemberPassword] = useState('')
+  const [teamError, setTeamError] = useState<string | null>(null)
+  const [teamSuccess, setTeamSuccess] = useState<string | null>(null)
+  const [creatingMember, setCreatingMember] = useState(false)
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -180,6 +188,73 @@ export default function PerfilPage() {
 
   function update(field: keyof ProfileForm, value: string) {
     setProfile(prev => ({ ...prev, [field]: value }))
+  }
+
+  // Cargar equipo cuando el plan lo permite
+  useEffect(() => {
+    if (planKey !== 'profesional' && planKey !== 'empresa' && !isTeam) return
+    setTeamLoading(true)
+    fetch('/api/team')
+      .then(r => r.json())
+      .then(d => { if (d.members) setTeamMembers(d.members) })
+      .finally(() => setTeamLoading(false))
+  }, [planKey, isTeam])
+
+  async function handleCreateMember(e: React.FormEvent) {
+    e.preventDefault()
+    setTeamError(null)
+    setTeamSuccess(null)
+    if (newMemberPassword.length < 8) {
+      setTeamError('La contraseña debe tener al menos 8 caracteres.')
+      return
+    }
+    setCreatingMember(true)
+    try {
+      const res = await fetch('/api/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: newMemberEmail, password: newMemberPassword }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const msgs: Record<string, string> = {
+          plan_no_teams: 'Tu plan no incluye equipos.',
+          member_limit_reached: 'Has alcanzado el límite de miembros de tu plan.',
+        }
+        setTeamError(msgs[data.error] ?? data.error ?? 'Error al crear el miembro.')
+      } else {
+        setTeamSuccess(`Cuenta creada para ${data.email}.`)
+        setNewMemberEmail('')
+        setNewMemberPassword('')
+        // Recargar lista
+        const r = await fetch('/api/team')
+        const d = await r.json()
+        if (d.members) setTeamMembers(d.members)
+      }
+    } finally {
+      setCreatingMember(false)
+    }
+  }
+
+  async function handleRemoveMember(memberId: string) {
+    if (!window.confirm('¿Eliminar este miembro? Sus presupuestos pasarán a tu cuenta.')) return
+    setRemovingMemberId(memberId)
+    setTeamError(null)
+    try {
+      const res = await fetch('/api/team', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId }),
+      })
+      if (res.ok) {
+        setTeamMembers(prev => prev.filter(m => m.id !== memberId))
+      } else {
+        const d = await res.json()
+        setTeamError(d.error ?? 'Error al eliminar el miembro.')
+      }
+    } finally {
+      setRemovingMemberId(null)
+    }
   }
 
   async function handlePortal() {
@@ -412,6 +487,71 @@ export default function PerfilPage() {
                   {isTrial ? 'Activar plan' : 'Ver todos los planes'}
                 </Link>
               </div>
+
+              {/* Subsección equipo */}
+              {(planKey === 'profesional' || planKey === 'empresa' || isTeam) && (() => {
+                const limits = getPlanLimits(planKey, isTeam)
+                const maxMembers = limits.maxUsers !== null ? limits.maxUsers - 1 : null
+                const limitReached = maxMembers !== null && teamMembers.length >= maxMembers
+                return (
+                  <div className="border-t border-[#D5DCE4] dark:border-[#3A4A5C] pt-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-[#6B7B8C] dark:text-[#A9B5C2] uppercase tracking-wider">Equipo</p>
+                      <p className="text-xs text-[#A9B5C2]">
+                        {teamMembers.length} de {maxMembers !== null ? maxMembers : '∞'} miembros
+                      </p>
+                    </div>
+
+                    {teamLoading ? (
+                      <p className="text-xs text-[#A9B5C2] italic">Cargando...</p>
+                    ) : teamMembers.length > 0 ? (
+                      <ul className="space-y-2">
+                        {teamMembers.map(m => (
+                          <li key={m.id} className="flex items-center justify-between gap-2 bg-[#F4F6F9] dark:bg-[#0D1B2A] rounded-[8px] px-3 py-2">
+                            <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{m.email}</span>
+                            <button type="button"
+                              onClick={() => handleRemoveMember(m.id)}
+                              disabled={removingMemberId === m.id}
+                              className="shrink-0 text-[#A9B5C2] hover:text-[#E5484D] disabled:opacity-40 transition-colors text-xs font-bold px-1">
+                              {removingMemberId === m.id ? '...' : '✕'}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-[#A9B5C2] italic">Sin miembros todavía.</p>
+                    )}
+
+                    {limitReached ? (
+                      <p className="text-xs text-[#A9B5C2] bg-[#F4F6F9] dark:bg-[#0D1B2A] rounded-[8px] px-3 py-2">
+                        Límite de miembros alcanzado. Actualiza tu plan para añadir más.
+                      </p>
+                    ) : (
+                      <form onSubmit={handleCreateMember} className="space-y-2">
+                        <input type="email" value={newMemberEmail}
+                          onChange={e => setNewMemberEmail(e.target.value)}
+                          placeholder="Email del nuevo miembro" required
+                          className={inputClass} />
+                        <input type="password" value={newMemberPassword}
+                          onChange={e => setNewMemberPassword(e.target.value)}
+                          placeholder="Contraseña (mínimo 8 caracteres)" minLength={8} required
+                          className={inputClass} />
+                        <button type="submit" disabled={creatingMember}
+                          className="w-full border border-[#FF6A00] text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/20 font-semibold rounded-[8px] px-4 py-2 text-sm disabled:opacity-40 transition-colors">
+                          {creatingMember ? 'Creando...' : 'Crear cuenta de miembro'}
+                        </button>
+                      </form>
+                    )}
+
+                    {teamError && (
+                      <p className="text-xs text-[#E5484D] bg-red-50 dark:bg-red-900/20 rounded-[8px] px-3 py-2">{teamError}</p>
+                    )}
+                    {teamSuccess && (
+                      <p className="text-xs text-[#1FB57A] bg-green-50 dark:bg-green-900/20 rounded-[8px] px-3 py-2">{teamSuccess}</p>
+                    )}
+                  </div>
+                )
+              })()}
             </section>
           )
         })()}
