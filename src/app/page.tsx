@@ -1,8 +1,10 @@
 import Link from "next/link";
+import Footer from "@/components/Footer";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-[#F4F6F9] dark:bg-[#0D1B2A] flex flex-col items-center justify-center px-4 py-12 text-center">
+    <div className="min-h-screen bg-[#F4F6F9] dark:bg-[#0D1B2A] flex flex-col">
+    <main className="flex-1 flex flex-col items-center justify-center px-4 py-12 text-center">
       <div className="flex flex-col items-center gap-4 mb-8">
         <img src="/images/logo.svg" alt="Presuply" className="h-16 w-auto" />
         <h1 className="text-4xl font-bold tracking-tight text-[#0D1B2A] dark:text-[#F4F6F9]">
@@ -28,5 +30,7 @@ export default function Home() {
         </Link>
       </div>
     </main>
+    <Footer />
+    </div>
   );
 }

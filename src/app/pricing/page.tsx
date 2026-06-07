@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Footer from '@/components/Footer'
 
 const PLANS = [
   {
@@ -211,10 +212,13 @@ export default function PricingPage() {
         )}
 
         <p className="text-center text-xs text-[#A9B5C2]">
-          Al continuar aceptas nuestros términos de servicio. Cancela en cualquier momento desde tu panel de suscripción.
+          Al continuar aceptas nuestros{' '}
+          <Link href="/terminos" className="hover:text-[#FF6A00] underline transition-colors">términos de servicio</Link>.
+          Cancela en cualquier momento desde tu panel de suscripción.
         </p>
 
       </div>
+      <Footer />
     </main>
   )
 }

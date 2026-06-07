@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Syne, Montserrat } from "next/font/google";
 import "./globals.css";
 import ThemeProvider from "@/components/ThemeProvider";
+import CookieBanner from "@/components/CookieBanner";
 
 const syne = Syne({
   variable: "--font-syne",
@@ -43,6 +44,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>{children}</ThemeProvider>
+        <CookieBanner />
       </body>
     </html>
   );
