@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Budget, Folder } from '@/types/database'
 import { getPlanLimits, type PlanKey } from '@/lib/plans'
+import OnboardingModal from '@/components/OnboardingModal'
 import {
   DndContext,
   DragOverlay,
@@ -228,6 +229,8 @@ export default function DashboardPage() {
   const [budgetsUsed, setBudgetsUsed] = useState(0)
   const [openingPortal, setOpeningPortal] = useState(false)
   const [planKey, setPlanKey] = useState<PlanKey>('trial')
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [userEmail, setUserEmail] = useState('')
   const [isTeam, setIsTeam] = useState(false)
   const [showFolderUpgradeModal, setShowFolderUpgradeModal] = useState(false)
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null)
@@ -269,17 +272,19 @@ export default function DashboardPage() {
       const [foldersRes, budgetsRes, profileRes, teamMemberRes] = await Promise.all([
         supabase.from('folders').select('*').order('position'),
         supabase.from('budgets').select('*').order('updated_at', { ascending: false }),
-        supabase.from('profiles').select('subscription_status, budgets_used, plan_key, is_team').eq('id', user.id).single(),
+        supabase.from('profiles').select('subscription_status, budgets_used, plan_key, is_team, onboarding_completed').eq('id', user.id).single(),
         supabase.from('teams').select('owner_id').eq('member_id', user.id).maybeSingle(),
       ])
 
       setFolders(foldersRes.data ?? [])
       setBudgets(budgetsRes.data ?? [])
+      setUserEmail(user.email ?? '')
       if (profileRes.data) {
         setSubscriptionStatus(profileRes.data.subscription_status ?? 'trial')
         setBudgetsUsed(profileRes.data.budgets_used ?? 0)
         setPlanKey((profileRes.data.plan_key ?? 'trial') as PlanKey)
         setIsTeam(profileRes.data.is_team ?? false)
+        setShowOnboarding(!profileRes.data.onboarding_completed)
       }
 
       if (teamMemberRes.data?.owner_id) {
@@ -404,6 +409,16 @@ export default function DashboardPage() {
     setBudgets(prev => prev.map(b => b.id === budgetId ? { ...b, folder_id: newFolderId } : b))
     const supabase = createClient()
     await supabase.from('budgets').update({ folder_id: newFolderId }).eq('id', budgetId)
+  }
+
+  // ── Onboarding ─────────────────────────────────────────────────────────
+  async function completeOnboarding() {
+    setShowOnboarding(false)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await supabase.from('profiles').update({ onboarding_completed: true }).eq('id', user.id)
+    }
   }
 
   // ── Portal Stripe ──────────────────────────────────────────────────────
@@ -731,6 +746,11 @@ export default function DashboardPage() {
         )}
 
       </div>
+
+      {/* Modal: onboarding */}
+      {showOnboarding && !loading && (
+        <OnboardingModal userEmail={userEmail} onComplete={completeOnboarding} />
+      )}
 
       {/* Modal: upgrade para carpetas */}
       {showFolderUpgradeModal && (

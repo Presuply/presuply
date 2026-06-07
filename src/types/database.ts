@@ -19,6 +19,7 @@ export interface Profile {
   subscription_status: string
   budgets_used: number
   plan: string
+  onboarding_completed: boolean
   created_at: string
   updated_at: string
 }
