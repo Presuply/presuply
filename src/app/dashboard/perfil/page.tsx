@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import Tooltip from '@/components/Tooltip'
+import { usePageTooltips } from '@/hooks/usePageTooltips'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useTheme } from '@/components/ThemeProvider'
@@ -275,6 +277,9 @@ export default function PerfilPage() {
   }
 
   // Nombre del archivo de plantilla para mostrar al usuario
+  const { activeId: tooltipId, markSeen, skipAll: skipTour } =
+    usePageTooltips(['perf_sub', 'perf_team'])
+
   const templateDisplayName = templateFile?.name
     ?? (profile.template_url ? profile.template_url.split('/').pop() : null)
 
@@ -436,7 +441,16 @@ export default function PerfilPage() {
 
           return (
             <section className={sec}>
-              <h2 className={secTitle}>Mi suscripción</h2>
+              <div className="relative inline-block">
+                <h2 className={secTitle}>Mi suscripción</h2>
+                <Tooltip
+                  content="Gestiona tu plan o cancela cuando quieras"
+                  placement="right"
+                  isActive={tooltipId === 'perf_sub'}
+                  onDismiss={() => markSeen('perf_sub')}
+                  onSkipAll={skipTour}
+                />
+              </div>
 
               <div className="flex items-center gap-3">
                 <span className={`inline-block rounded-full px-3 py-1 text-sm font-semibold ${badgeClass}`}>
@@ -496,7 +510,16 @@ export default function PerfilPage() {
                 return (
                   <div className="border-t border-[#D5DCE4] dark:border-[#3A4A5C] pt-4 space-y-3">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold text-[#6B7B8C] dark:text-[#A9B5C2] uppercase tracking-wider">Equipo</p>
+                      <div className="relative inline-block">
+                        <p className="text-xs font-bold text-[#6B7B8C] dark:text-[#A9B5C2] uppercase tracking-wider">Equipo</p>
+                        <Tooltip
+                          content="Invita a tu equipo a colaborar en tus presupuestos"
+                          placement="right"
+                          isActive={tooltipId === 'perf_team'}
+                          onDismiss={() => markSeen('perf_team')}
+                          onSkipAll={skipTour}
+                        />
+                      </div>
                       <p className="text-xs text-[#A9B5C2]">
                         {teamMembers.length} de {maxMembers !== null ? maxMembers : '∞'} miembros
                       </p>

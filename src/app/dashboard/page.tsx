@@ -7,6 +7,8 @@ import { createClient } from '@/lib/supabase/client'
 import type { Budget, Folder } from '@/types/database'
 import { getPlanLimits, type PlanKey } from '@/lib/plans'
 import OnboardingModal from '@/components/OnboardingModal'
+import Tooltip from '@/components/Tooltip'
+import { usePageTooltips } from '@/hooks/usePageTooltips'
 import {
   DndContext,
   DragOverlay,
@@ -411,6 +413,10 @@ export default function DashboardPage() {
     await supabase.from('budgets').update({ folder_id: newFolderId }).eq('id', budgetId)
   }
 
+  // ── Tooltips ───────────────────────────────────────────────────────────
+  const { activeId: tooltipId, markSeen, skipAll: skipTour } =
+    usePageTooltips(['dash_new', 'dash_folder', 'dash_search'])
+
   // ── Onboarding ─────────────────────────────────────────────────────────
   async function completeOnboarding() {
     setShowOnboarding(false)
@@ -472,13 +478,22 @@ export default function DashboardPage() {
                 <h1 className="text-xl font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">Presupuestos</h1>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button type="button" onClick={() => setSearchActive(true)}
-                  aria-label="Buscar"
-                  className="w-9 h-9 flex items-center justify-center text-[#6B7B8C] hover:text-[#FF6A00] hover:bg-white dark:hover:bg-[#1B2A3A] rounded-[8px] transition-colors">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  </svg>
-                </button>
+                <div className="relative">
+                  <button type="button" onClick={() => setSearchActive(true)}
+                    aria-label="Buscar"
+                    className="w-9 h-9 flex items-center justify-center text-[#6B7B8C] hover:text-[#FF6A00] hover:bg-white dark:hover:bg-[#1B2A3A] rounded-[8px] transition-colors">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                  </button>
+                  <Tooltip
+                    content="Encuentra cualquier presupuesto al instante"
+                    placement="bottom-right"
+                    isActive={!showOnboarding && tooltipId === 'dash_search'}
+                    onDismiss={() => markSeen('dash_search')}
+                    onSkipAll={skipTour}
+                  />
+                </div>
                 {hasSubscription && (
                   <button type="button" onClick={handlePortal} disabled={openingPortal}
                     className="text-sm text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#FF6A00] disabled:opacity-40 transition-colors hidden sm:block">
@@ -492,20 +507,38 @@ export default function DashboardPage() {
                 {(() => {
                   const canUseFolders = getPlanLimits(planKey, isTeam).canUseFolders
                   return (
-                    <button
-                      type="button"
-                      onClick={() => canUseFolders ? (setCreatingFolder(true), setOpenMenuId(null)) : setShowFolderUpgradeModal(true)}
-                      className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5"
-                    >
-                      {canUseFolders ? null : <span className="text-xs">🔒</span>}
-                      + Carpeta
-                    </button>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => canUseFolders ? (setCreatingFolder(true), setOpenMenuId(null)) : setShowFolderUpgradeModal(true)}
+                        className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5"
+                      >
+                        {canUseFolders ? null : <span className="text-xs">🔒</span>}
+                        + Carpeta
+                      </button>
+                      <Tooltip
+                        content="Organiza presupuestos por zona o cliente"
+                        placement="bottom-right"
+                        isActive={!showOnboarding && tooltipId === 'dash_folder'}
+                        onDismiss={() => markSeen('dash_folder')}
+                        onSkipAll={skipTour}
+                      />
+                    </div>
                   )
                 })()}
-                <Link href="/dashboard/nuevo"
-                  className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm transition-colors">
-                  + Nuevo
-                </Link>
+                <div className="relative">
+                  <Link href="/dashboard/nuevo"
+                    className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm transition-colors inline-block">
+                    + Nuevo
+                  </Link>
+                  <Tooltip
+                    content="Crea tu primer presupuesto"
+                    placement="bottom-right"
+                    isActive={!showOnboarding && tooltipId === 'dash_new'}
+                    onDismiss={() => markSeen('dash_new')}
+                    onSkipAll={skipTour}
+                  />
+                </div>
               </div>
             </>
           )}

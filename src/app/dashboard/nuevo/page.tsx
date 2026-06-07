@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import Tooltip from '@/components/Tooltip'
+import { usePageTooltips } from '@/hooks/usePageTooltips'
 
 interface UploadedFile {
   id: string
@@ -185,6 +187,8 @@ export default function NuevoPresupuestoPage() {
   }
 
   const canGenerate = uploads.length > 0 || text.trim().length > 0
+  const { activeId: tooltipId, markSeen, skipAll: skipTour } =
+    usePageTooltips(['new_upload', 'new_ai'])
 
   if (!budgetId) {
     return (
@@ -212,20 +216,29 @@ export default function NuevoPresupuestoPage() {
             Fotos o PDFs de la obra
           </label>
 
-          <label
-            htmlFor="fotos"
-            className={`flex items-center justify-center w-full rounded-[12px] border-2 border-dashed px-4 py-6 text-sm font-semibold cursor-pointer transition-colors ${
-              uploading
-                ? 'border-[#D5DCE4] dark:border-[#3A4A5C] text-[#A9B5C2] cursor-not-allowed'
-                : 'border-[#D5DCE4] dark:border-[#3A4A5C] text-[#6B7B8C] hover:border-[#FF6A00] hover:text-[#FF6A00]'
-            }`}
-          >
-            {uploading ? (
-              <span className="italic text-[#A9B5C2]">Subiendo archivo...</span>
-            ) : (
-              '+ Añadir fotos o PDFs'
-            )}
-          </label>
+          <div className="relative">
+            <label
+              htmlFor="fotos"
+              className={`flex items-center justify-center w-full rounded-[12px] border-2 border-dashed px-4 py-6 text-sm font-semibold cursor-pointer transition-colors ${
+                uploading
+                  ? 'border-[#D5DCE4] dark:border-[#3A4A5C] text-[#A9B5C2] cursor-not-allowed'
+                  : 'border-[#D5DCE4] dark:border-[#3A4A5C] text-[#6B7B8C] hover:border-[#FF6A00] hover:text-[#FF6A00]'
+              }`}
+            >
+              {uploading ? (
+                <span className="italic text-[#A9B5C2]">Subiendo archivo...</span>
+              ) : (
+                '+ Añadir fotos o PDFs'
+              )}
+            </label>
+            <Tooltip
+              content="Sube una foto, WhatsApp o PDF con el trabajo a presupuestar"
+              placement="bottom"
+              isActive={tooltipId === 'new_upload'}
+              onDismiss={() => markSeen('new_upload')}
+              onSkipAll={skipTour}
+            />
+          </div>
           <input
             id="fotos"
             type="file"
@@ -292,14 +305,23 @@ export default function NuevoPresupuestoPage() {
           </p>
         )}
 
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={!canGenerate || uploading || extracting}
-          className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          {extracting ? 'Analizando con IA...' : 'Generar presupuesto'}
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={!canGenerate || uploading || extracting}
+            className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {extracting ? 'Analizando con IA...' : 'Generar presupuesto'}
+          </button>
+          <Tooltip
+            content="Claude extraerá las partidas automáticamente en segundos"
+            placement="top"
+            isActive={tooltipId === 'new_ai'}
+            onDismiss={() => markSeen('new_ai')}
+            onSkipAll={skipTour}
+          />
+        </div>
 
       </div>
     </main>

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Confidence } from '@/types/database'
+import Tooltip from '@/components/Tooltip'
+import { usePageTooltips } from '@/hooks/usePageTooltips'
 import {
   DndContext,
   DragOverlay,
@@ -886,6 +888,9 @@ export default function PresupuestoEditorPage() {
   const sec = 'bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] shadow-sm p-4 sm:p-6 space-y-4'
   const secTitle = 'text-xs font-bold text-[#6B7B8C] dark:text-[#A9B5C2] uppercase tracking-wider'
 
+  const { activeId: tooltipId, markSeen, skipAll: skipTour } =
+    usePageTooltips(['edit_autosave', 'edit_chapters', 'edit_export'])
+
   const visibleChapters = chapters.filter(c => !c._deleted).sort((a, b) => a.position - b.position)
   const activeItem = activeId ? lineItems.find(i => i.id === activeId) : null
 
@@ -911,10 +916,19 @@ export default function PresupuestoEditorPage() {
             className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors">
             {generatingPdf ? 'Generando...' : pdfUrl ? 'Descargar PDF' : 'PDF'}
           </button>
-          <button type="button" onClick={handleSave} disabled={saving}
-            className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2 text-sm disabled:opacity-40 transition-colors">
-            {saving ? 'Guardando...' : 'Guardar'}
-          </button>
+          <div className="relative">
+            <button type="button" onClick={handleSave} disabled={saving}
+              className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2 text-sm disabled:opacity-40 transition-colors">
+              {saving ? 'Guardando...' : 'Guardar'}
+            </button>
+            <Tooltip
+              content="Tus cambios se guardan solos cada 30 segundos"
+              placement="bottom-right"
+              isActive={tooltipId === 'edit_autosave'}
+              onDismiss={() => markSeen('edit_autosave')}
+              onSkipAll={skipTour}
+            />
+          </div>
         </div>
       </div>
 
@@ -1066,13 +1080,22 @@ export default function PresupuestoEditorPage() {
           </DragOverlay>
         </DndContext>
 
-        <button
-          type="button"
-          onClick={addChapter}
-          className="w-full py-3 border-2 border-dashed border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[12px] text-sm font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] hover:border-[#FF6A00] hover:text-[#FF6A00] transition-colors"
-        >
-          + Añadir capítulo
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={addChapter}
+            className="w-full py-3 border-2 border-dashed border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[12px] text-sm font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] hover:border-[#FF6A00] hover:text-[#FF6A00] transition-colors"
+          >
+            + Añadir capítulo
+          </button>
+          <Tooltip
+            content="Organiza las partidas por capítulos. Arrastra para reordenar"
+            placement="top"
+            isActive={tooltipId === 'edit_chapters'}
+            onDismiss={() => markSeen('edit_chapters')}
+            onSkipAll={skipTour}
+          />
+        </div>
 
         {/* Impuesto y costes adicionales */}
         <section className={sec}>
@@ -1189,7 +1212,7 @@ export default function PresupuestoEditorPage() {
             {generatingPdf ? 'Generando PDF...' : pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
           </button>
         </div>
-        <div className="flex gap-3 pb-8">
+        <div className="relative flex gap-3 pb-8">
           <button type="button" onClick={handleExportCSV}
             className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm transition-colors">
             Exportar CSV
@@ -1198,6 +1221,13 @@ export default function PresupuestoEditorPage() {
             className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm transition-colors">
             Exportar Excel
           </button>
+          <Tooltip
+            content="Genera tu PDF profesional, o exporta a Excel/CSV"
+            placement="top-right"
+            isActive={tooltipId === 'edit_export'}
+            onDismiss={() => markSeen('edit_export')}
+            onSkipAll={skipTour}
+          />
         </div>
 
       </div>
