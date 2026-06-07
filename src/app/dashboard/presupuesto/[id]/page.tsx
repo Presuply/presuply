@@ -292,6 +292,8 @@ export default function PresupuestoEditorPage() {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const { activeId: tooltipId, markSeen, skipAll: skipTour } =
+    usePageTooltips(['edit_autosave', 'edit_chapters', 'edit_export'])
   const [dirty, setDirty] = useState(false)
   const [lastChange, setLastChange] = useState(0)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -887,9 +889,6 @@ export default function PresupuestoEditorPage() {
   const lbl = 'block text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]'
   const sec = 'bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] shadow-sm p-4 sm:p-6 space-y-4'
   const secTitle = 'text-xs font-bold text-[#6B7B8C] dark:text-[#A9B5C2] uppercase tracking-wider'
-
-  const { activeId: tooltipId, markSeen, skipAll: skipTour } =
-    usePageTooltips(['edit_autosave', 'edit_chapters', 'edit_export'])
 
   const visibleChapters = chapters.filter(c => !c._deleted).sort((a, b) => a.position - b.position)
   const activeItem = activeId ? lineItems.find(i => i.id === activeId) : null
