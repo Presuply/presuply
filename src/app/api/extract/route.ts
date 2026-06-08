@@ -258,14 +258,19 @@ export async function POST(request: Request) {
 
     let parsed: unknown
     try {
-      const cleaned = rawText
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/```\s*$/i, '')
+      let cleaned = rawText
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
         .trim()
+
+      const firstBrace = cleaned.indexOf('{')
+      const lastBrace = cleaned.lastIndexOf('}')
+      if (firstBrace !== -1) cleaned = cleaned.slice(firstBrace)
+      if (lastBrace !== -1) cleaned = cleaned.slice(0, cleaned.lastIndexOf('}') + 1)
+
       parsed = JSON.parse(cleaned)
     } catch {
-      console.error('Respuesta no parseable de Claude:', rawText)
+      console.error('Respuesta no parseable de Claude — raw:', rawText)
       return NextResponse.json(
         { error: 'No se pudo parsear la respuesta de Claude', raw: rawText },
         { status: 422 }
