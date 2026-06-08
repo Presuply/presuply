@@ -253,8 +253,10 @@ export async function POST(request: Request) {
     }))
 
     // 6. Parsear respuesta de forma defensiva
-    const rawText =
-      claudeResponse.content[0]?.type === 'text' ? claudeResponse.content[0].text : ''
+    const rawText = claudeResponse.content
+      .filter((b): b is Extract<Anthropic.ContentBlock, { type: 'text' }> => b.type === 'text')
+      .map(b => b.text)
+      .join('\n')
 
     let parsed: unknown
     try {
@@ -263,14 +265,30 @@ export async function POST(request: Request) {
         .replace(/```/g, '')
         .trim()
 
-      const firstBrace = cleaned.indexOf('{')
-      const lastBrace = cleaned.lastIndexOf('}')
-      if (firstBrace !== -1) cleaned = cleaned.slice(firstBrace)
-      if (lastBrace !== -1) cleaned = cleaned.slice(0, cleaned.lastIndexOf('}') + 1)
+      const firstObj = cleaned.indexOf('{')
+      const lastObj = cleaned.lastIndexOf('}')
+      const firstArr = cleaned.indexOf('[')
+      const lastArr = cleaned.lastIndexOf(']')
 
-      parsed = JSON.parse(cleaned)
-    } catch {
+      if (firstObj !== -1 && lastObj !== -1 && (firstArr === -1 || firstObj < firstArr)) {
+        cleaned = cleaned.slice(firstObj, lastObj + 1)
+      } else if (firstArr !== -1 && lastArr !== -1) {
+        cleaned = cleaned.slice(firstArr, lastArr + 1)
+      }
+
+      cleaned = cleaned.replace(/,\s*([}\]])/g, '$1')
+
+      try {
+        parsed = JSON.parse(cleaned)
+      } catch {
+        const normalizedNumbers = cleaned
+          .replace(/(\d),(\d)/g, '$1.$2')
+          .replace(/(\d)'\s*(\d)/g, '$1.$2')
+        parsed = JSON.parse(normalizedNumbers)
+      }
+    } catch (err) {
       console.error('Respuesta no parseable de Claude — raw:', rawText)
+      console.error('Parse error:', err)
       return NextResponse.json(
         { error: 'No se pudo parsear la respuesta de Claude', raw: rawText },
         { status: 422 }
