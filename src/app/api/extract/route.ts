@@ -11,69 +11,51 @@ const SYSTEM_PROMPT = `Eres un asistente especializado en extraer partidas de pr
 
 Tu única tarea es devolver un JSON válido con las partidas detectadas. Nunca devuelvas texto adicional, explicaciones, comentarios ni marcas de formato como \`\`\`json. Solo el JSON puro.
 
+INSTRUCCIONES ESTRICTAS DE FORMATO:
+
+1. Extraer SIEMPRE la estructura: capítulos → partidas.
+2. Si el documento no tiene capítulos claros, agrupar las partidas en capítulos lógicos por tipo de trabajo. Si no hay agrupación posible, usar un capítulo único con nombre "General".
+3. Cada partida DEBE tener: descripcion, unidad, cantidad, precio_unitario, total. Nunca omitir ninguno de estos campos.
+4. Si algún campo no aparece en el documento, inferirlo o dejarlo en 0 — nunca omitir el campo.
+5. Las descripciones deben ser concisas pero completas (máx. 120 caracteres).
+6. Las unidades deben seguir nomenclatura estándar de construcción española: m², m³, ml, ud, kg, h, pa (partida alzada). Si no puedes inferirla, usa null.
+7. Los números decimales siempre con punto, nunca con coma.
+8. No inventar partidas que no estén en el documento original.
+
 REGLAS DE EXTRACCIÓN:
 
-1. SEPARADOR DECIMAL
-   En España los profesionales usan la coma o el apóstrofo como separador decimal: 29'56 y 29,56 son ambos 29.56.
-   Normaliza siempre a punto decimal en los números del JSON.
+- En España los profesionales usan la coma o el apóstrofo como separador decimal: 29'56 y 29,56 son ambos 29.56. Normaliza siempre a punto decimal.
+- Cuando veas una expresión como "8'40 × 46 = 386'40": cantidad 8.40, precio_unitario 46.00, total 386.40. Si el total escrito difiere del calculado, usa el escrito (es el valor acordado con el cliente).
+- Si falta precio_unitario pero hay total y cantidad: precio_unitario = total / cantidad.
+- Si solo hay descripción y total sin cantidad ni precio: cantidad 1, unidad "ud", precio_unitario igual al total.
+- Si falta el total: total = cantidad × precio_unitario.
+- Las líneas que parecen nombre de cliente o dirección van en el campo "cliente" del JSON raíz, no como partidas.
+- Los totales globales del presupuesto no son partidas — ignóralos.
+- Si hay texto impreso Y manuscrito, el manuscrito tiene PRIORIDAD (es la corrección del profesional).
 
-2. OPERACIONES EN LÍNEA
-   Cuando veas una expresión como "8'40 × 46 = 386'40", extrae:
-   - cantidad: 8.40
-   - precio_unitario: 46.00
-   - total: 386.40
-   Si el resultado escrito difiere del calculado, usa el escrito (es el valor acordado con el cliente).
-
-3. PARTIDAS INCOMPLETAS
-   - Si falta el precio unitario pero hay total y cantidad, calcula: precio_unitario = total / cantidad
-   - Si solo hay descripción y total sin cantidad ni precio, pon cantidad: 1, unidad: "ud", precio_unitario: igual al total
-   - Si falta el total, calcula: total = cantidad × precio_unitario
-   - Si hay ambigüedad irresoluble, marca confianza: "baja"
-
-4. CABECERAS Y TOTALES GLOBALES
-   Las líneas que parecen nombre de cliente o dirección (ej: "Frente La Gomera", "Ángeles / Yurena") van en el campo cliente_detectado del JSON raíz, no como partidas.
-   Los totales globales del presupuesto (ej: "Total: 2.219,13 €") no son partidas — ignóralos.
-
-5. PRESUPUESTOS IMPRESOS CON ANOTACIONES
-   Si hay texto impreso Y manuscrito, las anotaciones manuscritas tienen PRIORIDAD sobre los valores impresos. El manuscrito es la corrección del profesional para ese cliente concreto.
-   Ignora el texto transparentado del reverso del papel.
-
-6. UNIDADES HABITUALES
-   Infiere la unidad por contexto si no está escrita:
-   - Superficies → m²
-   - Longitudes → ml
-   - Piezas/instalaciones → ud
-   - Horas → h
-   Si no puedes inferirla, deja unidad: null
-
-7. CONFIANZA
-   - "alta": descripción, cantidad, precio y total claros
-   - "media": algún dato inferido o calculado
-   - "baja": letra ilegible, dato ambiguo o falta información clave
+CONSISTENCIA:
+Responder SIEMPRE con el mismo esquema JSON, sin variaciones. No añadir campos extra, no omitir campos, no cambiar nombres de claves. No incluir texto fuera del JSON.
 
 FORMATO DE RESPUESTA — devuelve exactamente esto, sin nada más:
 
 {
-  "cliente_detectado": "nombre si aparece, null si no",
-  "notas": "cualquier información relevante que no sea una partida",
+  "titulo": "nombre del proyecto o trabajo si aparece en el documento, null si no",
+  "cliente": "nombre del cliente si aparece, null si no",
   "capitulos": [
     {
-      "nombre": "1. DEMOLICIÓN",
+      "nombre": "NOMBRE DEL CAPÍTULO",
       "partidas": [
         {
-          "descripcion": "texto descriptivo de la partida",
-          "unidad": "m² | ml | ud | h | null",
+          "descripcion": "texto descriptivo de la partida (máx. 120 caracteres)",
+          "unidad": "m² | m³ | ml | ud | kg | h | pa | null",
           "cantidad": 0.00,
           "precio_unitario": 0.00,
-          "total": 0.00,
-          "confianza": "alta | media | baja"
+          "total": 0.00
         }
       ]
     }
   ]
-}
-
-Si no detectas capítulos explícitos en el documento, agrupa todas las partidas en un único capítulo con nombre "General".`
+}`
 
 const USER_PROMPT =
   'Extrae todas las partidas de las siguientes imágenes de presupuesto. ' +
@@ -122,7 +104,7 @@ export async function POST(request: Request) {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('subscription_status, budgets_used, is_team, plan_key, budgets_this_month, month_reset_at')
+      .select('subscription_status, budgets_used, is_team, plan_key, budgets_this_month, month_reset_at, template_schema')
       .eq('id', profileOwnerId)
       .single()
 
@@ -229,6 +211,14 @@ export async function POST(request: Request) {
     // 4. Llamar a Claude con prompt cacheado
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+    // Construir el system prompt: base + sección de schema si existe
+    const templateSchema = (profile as { template_schema?: Record<string, unknown> | null } | null)?.template_schema
+    const schemaSection = templateSchema
+      ? `\n\nPLANTILLA MAESTRA DEL USUARIO — SEGUIR ESTRICTAMENTE:\nEste usuario tiene una plantilla de referencia que define su estilo habitual. Aplica este esquema al estructurar el presupuesto:\n${JSON.stringify(templateSchema, null, 2)}\n\n- Usa los tipos de capítulos del esquema cuando correspondan al contenido del documento.\n- Respeta la nomenclatura de unidades definida en el campo "nomenclatura_unidades".\n- Mantén el mismo nivel de detalle y longitud de descripciones que indica el esquema.\n- Si el documento tiene información de un tipo de trabajo no contemplado en el esquema, añade el capítulo necesario manteniendo el mismo estilo.\n- El esquema es una guía de estilo, no una restricción de contenido: extrae lo que hay en el documento, pero con el formato del esquema.`
+      : ''
+
+    const effectiveSystemPrompt = SYSTEM_PROMPT + schemaSection
+
     const userContent: Anthropic.ContentBlockParam[] = [
       ...contentBlocks,
       {
@@ -243,7 +233,7 @@ export async function POST(request: Request) {
       system: [
         {
           type: 'text',
-          text: SYSTEM_PROMPT,
+          text: effectiveSystemPrompt,
           cache_control: { type: 'ephemeral' },
         },
       ],
@@ -268,14 +258,19 @@ export async function POST(request: Request) {
 
     let parsed: unknown
     try {
-      const cleaned = rawText
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/```\s*$/i, '')
+      let cleaned = rawText
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
         .trim()
+
+      const firstBrace = cleaned.indexOf('{')
+      const lastBrace = cleaned.lastIndexOf('}')
+      if (firstBrace !== -1) cleaned = cleaned.slice(firstBrace)
+      if (lastBrace !== -1) cleaned = cleaned.slice(0, cleaned.lastIndexOf('}') + 1)
+
       parsed = JSON.parse(cleaned)
     } catch {
-      console.error('Respuesta no parseable de Claude:', rawText)
+      console.error('Respuesta no parseable de Claude — raw:', rawText)
       return NextResponse.json(
         { error: 'No se pudo parsear la respuesta de Claude', raw: rawText },
         { status: 422 }
@@ -289,13 +284,12 @@ export async function POST(request: Request) {
       cantidad: number
       precio_unitario: number
       total: number
-      confianza: string
     }
     type RawCapitulo = { nombre: string; partidas: RawPartida[] }
 
     const extracted = parsed as {
-      cliente_detectado?: string | null
-      notas?: string | null
+      titulo?: string | null
+      cliente?: string | null
       capitulos?: RawCapitulo[]
     }
 
@@ -329,7 +323,7 @@ export async function POST(request: Request) {
 
       if (!chapterRow) continue
 
-      // Insertar partidas del capítulo
+      // Insertar partidas del capítulo (sin campo confidence — schema nuevo no incluye confianza)
       await supabase.from('line_items').insert(
         partidas.map((p, pi) => ({
           budget_id: budgetId,
@@ -340,20 +334,29 @@ export async function POST(request: Request) {
           quantity: Number(p.cantidad) || 0,
           unit_price: Number(p.precio_unitario) || 0,
           total: Number(p.total) || 0,
-          confidence: (['alta', 'media', 'baja'].includes(p.confianza)
-            ? p.confianza
-            : null) as 'alta' | 'media' | 'baja' | null,
+          confidence: null,
           position: pi,
         }))
       )
     }
 
-    if (extracted.cliente_detectado) {
+    // Actualizar client_name (campo "cliente" en nuevo schema)
+    if (extracted.cliente) {
       await supabase
         .from('budgets')
-        .update({ client_name: extracted.cliente_detectado })
+        .update({ client_name: extracted.cliente })
         .eq('id', budgetId)
         .eq('user_id', user.id)
+    }
+
+    // Guardar título del proyecto en budgets.title si está vacío
+    if (extracted.titulo) {
+      await supabase
+        .from('budgets')
+        .update({ title: extracted.titulo })
+        .eq('id', budgetId)
+        .eq('user_id', user.id)
+        .is('title', null)
     }
 
     // Incrementar contadores en el perfil del owner (no aplica a is_team)
