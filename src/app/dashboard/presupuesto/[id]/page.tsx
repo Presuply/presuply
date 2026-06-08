@@ -400,6 +400,7 @@ export default function PresupuestoEditorPage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [generatingPdf, setGeneratingPdf] = useState(false)
   const [generatingBudget, setGeneratingBudget] = useState(false)
+  const [generatingBC3, setGeneratingBC3] = useState(false)
   const [extendedEdit, setExtendedEdit] = useState<ExtendedDescEdit | null>(null)
   const [chapters, setChapters] = useState<EditableChapter[]>([])
   const [lineItems, setLineItems] = useState<EditableLineItem[]>([])
@@ -1100,6 +1101,32 @@ export default function PresupuestoEditorPage() {
     URL.revokeObjectURL(objectUrl)
   }
 
+  // ── Exportar BC3 ─────────────────────────────────────────────────────────
+  async function handleExportBC3() {
+    setGeneratingBC3(true)
+    setSaveError(null)
+    try {
+      const res = await fetch('/api/export-bc3', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budgetId: id }),
+      })
+      if (!res.ok) throw new Error('Error al generar el BC3')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `presupuesto-${budget.budget_number}.bc3`
+      document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Error exportando BC3:', err)
+      setSaveError('No se pudo generar el archivo BC3. Inténtalo de nuevo.')
+    } finally {
+      setGeneratingBC3(false)
+    }
+  }
+
   // ── Generar presupuesto (expandir descripciones) ──────────────────────────
   async function handleGenerateBudget() {
     setGeneratingBudget(true)
@@ -1575,22 +1602,31 @@ export default function PresupuestoEditorPage() {
             </p>
           )}
         </div>
-        <div className="relative flex gap-3 pb-8">
-          <button type="button" onClick={handleExportCSV}
-            className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm transition-colors">
-            Exportar CSV
-          </button>
-          <button type="button" onClick={handleExportExcel}
-            className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm transition-colors">
-            Exportar Excel
-          </button>
-          <Tooltip
-            content="Genera tu PDF profesional, o exporta a Excel/CSV"
-            placement="top-right"
-            isActive={tooltipId === 'edit_export'}
-            onDismiss={() => markSeen('edit_export')}
-            onSkipAll={skipTour}
-          />
+        <div className="space-y-2 pb-8">
+          <div className="relative flex flex-wrap gap-3">
+            <button type="button" onClick={handleExportCSV}
+              className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm transition-colors">
+              Exportar CSV
+            </button>
+            <button type="button" onClick={handleExportExcel}
+              className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm transition-colors">
+              Exportar Excel
+            </button>
+            <button type="button" onClick={handleExportBC3} disabled={generatingBC3}
+              className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm disabled:opacity-40 transition-colors">
+              {generatingBC3 ? 'Generando BC3...' : 'Exportar BC3'}
+            </button>
+            <Tooltip
+              content="Genera tu PDF profesional, o exporta a Excel/CSV/BC3"
+              placement="top-right"
+              isActive={tooltipId === 'edit_export'}
+              onDismiss={() => markSeen('edit_export')}
+              onSkipAll={skipTour}
+            />
+          </div>
+          <p className="text-xs text-[#A9B5C2]">
+            BC3 incluye descomposición IA de precios — puede tardar 10-20 segundos
+          </p>
         </div>
 
       </div>
