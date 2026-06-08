@@ -497,7 +497,7 @@ export default function PresupuestoEditorPage() {
 
       const [{ data: rawChapters }, { data: rawItems }] = await Promise.all([
         supabase.from('chapters').select('*').eq('budget_id', id).order('position'),
-        supabase.from('line_items').select('*').eq('budget_id', id).order('position'),
+        supabase.from('line_items').select('id, chapter_id, description, unit, quantity, unit_price, total, confidence, position, descripcion_extendida, titulo_partida, created_at').eq('budget_id', id).order('position'),
       ])
 
       const existingChapters = rawChapters ?? []
@@ -1681,13 +1681,13 @@ export default function PresupuestoEditorPage() {
                   {extendedEdit.titulo.length}/60
                 </span>
               </div>
-              <input
-                type="text"
+              <textarea
+                rows={2}
                 maxLength={60}
                 value={extendedEdit.titulo}
                 onChange={e => setExtendedEdit(prev => prev ? { ...prev, titulo: e.target.value } : null)}
                 placeholder="Título corto de la partida"
-                className={inputClass}
+                className={`${inputClass} resize-y min-w-0`}
               />
             </div>
 
