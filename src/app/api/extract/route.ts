@@ -256,25 +256,51 @@ export async function POST(request: Request) {
     const rawText =
       claudeResponse.content[0]?.type === 'text' ? claudeResponse.content[0].text : ''
 
+    // Log siempre para diagnóstico en Vercel
+    console.log('Claude extract raw (first 500 chars):', rawText.slice(0, 500))
+
     let parsed: unknown
+    let cleaned = ''
     try {
-      let cleaned = rawText
+      cleaned = rawText
         .replace(/```json/gi, '')
         .replace(/```/g, '')
         .trim()
 
       const firstBrace = cleaned.indexOf('{')
-      const lastBrace = cleaned.lastIndexOf('}')
       if (firstBrace !== -1) cleaned = cleaned.slice(firstBrace)
-      if (lastBrace !== -1) cleaned = cleaned.slice(0, cleaned.lastIndexOf('}') + 1)
+      const lastBrace = cleaned.lastIndexOf('}')
+      if (lastBrace !== -1) cleaned = cleaned.slice(0, lastBrace + 1)
 
       parsed = JSON.parse(cleaned)
-    } catch {
-      console.error('Respuesta no parseable de Claude — raw:', rawText)
-      return NextResponse.json(
-        { error: 'No se pudo parsear la respuesta de Claude', raw: rawText },
-        { status: 422 }
-      )
+    } catch (parseErr) {
+      // Segundo intento: buscar el array de capítulos directamente en el raw
+      const capMatch = rawText.match(/"capitulos"\s*:\s*(\[[\s\S]*\])/)
+      if (capMatch) {
+        try {
+          const capArray = JSON.parse(capMatch[1])
+          parsed = { titulo: null, cliente: null, capitulos: capArray }
+          console.warn('Extract: parse principal falló, recuperado via regex de capitulos')
+        } catch {
+          // fall through al error final
+        }
+      }
+
+      if (!parsed) {
+        console.error('Extract parse error:', parseErr instanceof Error ? parseErr.message : String(parseErr))
+        console.error('Cleaned string:', cleaned.slice(0, 500))
+        console.error('Raw text completo:', rawText)
+        return NextResponse.json(
+          { error: 'No se pudo parsear la respuesta de Claude', raw: rawText },
+          { status: 422 }
+        )
+      }
+    }
+
+    // Compatibilidad con schema antiguo (cliente_detectado) por si Claude lo devuelve
+    const parsedObj = parsed as Record<string, unknown>
+    if (!parsedObj.cliente && parsedObj.cliente_detectado) {
+      parsedObj.cliente = parsedObj.cliente_detectado
     }
 
     // 7. Guardar capítulos y partidas en Supabase

@@ -1212,7 +1212,7 @@ export default function PresupuestoEditorPage() {
       onClick={() => setOpenMenuId(null)}
     >
       {/* Barra superior */}
-      <div className="bg-white dark:bg-[#1B2A3A] border-b border-[#D5DCE4] dark:border-[#3A4A5C] px-4 py-4 flex items-center justify-between gap-3">
+      <div className="bg-white dark:bg-[#1B2A3A] border-b border-[#D5DCE4] dark:border-[#3A4A5C] px-4 py-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <a href="/dashboard" className="text-[#6B7B8C] hover:text-[#FF6A00] text-sm transition-colors shrink-0">
             ← Volver
@@ -1222,7 +1222,7 @@ export default function PresupuestoEditorPage() {
           </span>
           {dirty && <span className="text-xs text-[#A9B5C2] shrink-0">Sin guardar</span>}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="hidden sm:flex items-center gap-2 shrink-0">
           <div className="relative">
             <button type="button" onClick={handleSave} disabled={saving}
               className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors">
@@ -1237,12 +1237,12 @@ export default function PresupuestoEditorPage() {
             />
           </div>
           <button type="button" onClick={handleGenerateBudget} disabled={generatingBudget}
-            className="border border-[#FF6A00] text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/10 rounded-[8px] px-3 py-2 text-sm font-semibold disabled:opacity-40 transition-colors">
+            className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors">
             {generatingBudget ? 'Generando...' : '✨ Generar presupuesto'}
           </button>
           <button type="button" onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
             disabled={generatingPdf}
-            className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-3 py-2 text-sm disabled:opacity-40 transition-colors">
+            className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm disabled:opacity-40 transition-colors">
             {generatingPdf ? 'Generando PDF...' : pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
           </button>
         </div>
