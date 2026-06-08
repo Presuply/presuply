@@ -98,10 +98,14 @@ const inlineInput =
 
 function SortableRow({
   item,
+  chIdx,
+  itemIdx,
   onUpdate,
   onDelete,
 }: {
   item: EditableLineItem
+  chIdx: number
+  itemIdx: number
   onUpdate: (id: string, field: keyof EditableLineItem, value: string | number | null) => void
   onDelete: (id: string) => void
 }) {
@@ -126,6 +130,9 @@ function SortableRow({
         >
           ⠿
         </button>
+      </td>
+      <td className="px-2 py-2 w-10 text-xs text-[#A9B5C2] whitespace-nowrap tabular-nums select-none">
+        {chIdx + 1}.{itemIdx + 1}
       </td>
       <td className="px-2 py-2">
         <input type="text" value={item.description}
@@ -258,6 +265,7 @@ function ChapterSection({
           <thead>
             <tr className="border-b border-[#D5DCE4] dark:border-[#3A4A5C] bg-[#F4F6F9] dark:bg-[#0D1B2A] text-left">
               <th className="px-2 py-2 w-7" />
+              <th className="px-2 py-2 w-10 text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Nº</th>
               <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Descripción</th>
               <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] whitespace-nowrap">Ud.</th>
               <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] text-right whitespace-nowrap">Cantidad</th>
@@ -268,8 +276,8 @@ function ChapterSection({
           </thead>
           <tbody className="divide-y divide-[#D5DCE4] dark:divide-[#3A4A5C]">
             <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
-              {items.map(item => (
-                <SortableRow key={item.id} item={item} onUpdate={onUpdateItem} onDelete={onDeleteItem} />
+              {items.map((item, itemIdx) => (
+                <SortableRow key={item.id} item={item} chIdx={chIdx} itemIdx={itemIdx} onUpdate={onUpdateItem} onDelete={onDeleteItem} />
               ))}
             </SortableContext>
           </tbody>
@@ -346,6 +354,7 @@ export default function PresupuestoEditorPage() {
   const [chapters, setChapters] = useState<EditableChapter[]>([])
   const [lineItems, setLineItems] = useState<EditableLineItem[]>([])
   const [profileIban, setProfileIban] = useState<string | null>(null)
+  const [profileTemplateUrl, setProfileTemplateUrl] = useState<string | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
@@ -406,11 +415,12 @@ export default function PresupuestoEditorPage() {
 
       const [{ data: b }, { data: profile }] = await Promise.all([
         supabase.from('budgets').select('*').eq('id', id).single(),
-        supabase.from('profiles').select('iban').eq('id', user.id).single(),
+        supabase.from('profiles').select('iban, template_url').eq('id', user.id).single(),
       ])
       if (!b) { setLoading(false); return }
       if (b.pdf_url) setPdfUrl(b.pdf_url)
       setProfileIban(profile?.iban ?? null)
+      setProfileTemplateUrl(profile?.template_url ?? null)
 
       setBudget({
         client_name: b.client_name ?? '', client_email: b.client_email ?? '',
@@ -800,57 +810,69 @@ export default function PresupuestoEditorPage() {
   }, [lastChange, dirty])
 
   // ── PDF ───────────────────────────────────────────────────────────────────
+
+  async function uploadAndDownloadPDF(blob: Blob) {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Sin sesión')
+    const storagePath = `${user.id}/${id}.pdf`
+    await supabase.storage.from('pdfs').upload(storagePath, blob, { upsert: true, contentType: 'application/pdf' })
+    await supabase.from('budgets').update({ pdf_url: storagePath }).eq('id', id)
+    setPdfUrl(storagePath)
+    const objectUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl; a.download = `presupuesto-${budget.budget_number}.pdf`
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    URL.revokeObjectURL(objectUrl)
+  }
+
   async function handleGeneratePDF() {
     setGeneratingPdf(true); setSaveError(null)
     try {
-      const res = await fetch('/api/generate-pdf-html', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ budgetId: id }),
-      })
-      if (!res.ok) throw new Error('Error al generar el HTML')
-      const { html } = await res.json()
+      if (profileTemplateUrl) {
+        // Path con plantilla personalizada: genera HTML → html2canvas → jsPDF
+        const res = await fetch('/api/generate-pdf-html', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ budgetId: id }),
+        })
+        if (!res.ok) throw new Error('Error al generar el HTML')
+        const { html } = await res.json()
 
-      const styleBlocks = html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) ?? []
-      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
-      const bodyContent = bodyMatch ? bodyMatch[1] : html
+        const styleBlocks = html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) ?? []
+        const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+        const bodyContent = bodyMatch ? bodyMatch[1] : html
 
-      const container = document.createElement('div')
-      container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:white;font-family:Arial,sans-serif;'
-      container.innerHTML = styleBlocks.join('\n') + bodyContent
-      document.body.appendChild(container)
+        const container = document.createElement('div')
+        container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:white;font-family:Arial,sans-serif;'
+        container.innerHTML = styleBlocks.join('\n') + bodyContent
+        document.body.appendChild(container)
 
-      const { default: html2canvas } = await import('html2canvas')
-      const canvas = await html2canvas(container, { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', width: 794 })
-      document.body.removeChild(container)
+        const { default: html2canvas } = await import('html2canvas')
+        const canvas = await html2canvas(container, { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', width: 794 })
+        document.body.removeChild(container)
 
-      const { jsPDF } = await import('jspdf')
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-      const pdfWidth = pdf.internal.pageSize.getWidth()
-      const pdfPageHeight = pdf.internal.pageSize.getHeight()
-      const imgWidth = pdfWidth
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-      const imgData = canvas.toDataURL('image/jpeg', 0.95)
-      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight)
-      let heightLeft = imgHeight - pdfPageHeight; let page = 1
-      while (heightLeft > 0) {
-        pdf.addPage(); pdf.addImage(imgData, 'JPEG', 0, -(pdfPageHeight * page), imgWidth, imgHeight)
-        heightLeft -= pdfPageHeight; page++
+        const { jsPDF } = await import('jspdf')
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+        const pdfWidth = pdf.internal.pageSize.getWidth()
+        const pdfPageHeight = pdf.internal.pageSize.getHeight()
+        const imgWidth = pdfWidth
+        const imgHeight = (canvas.height * imgWidth) / canvas.width
+        const imgData = canvas.toDataURL('image/jpeg', 0.95)
+        pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight)
+        let heightLeft = imgHeight - pdfPageHeight; let page = 1
+        while (heightLeft > 0) {
+          pdf.addPage(); pdf.addImage(imgData, 'JPEG', 0, -(pdfPageHeight * page), imgWidth, imgHeight)
+          heightLeft -= pdfPageHeight; page++
+        }
+        await uploadAndDownloadPDF(pdf.output('blob'))
+
+      } else {
+        // Path react-pdf: el servidor devuelve el PDF directamente como binario
+        const res = await fetch(`/api/generate-pdf?budgetId=${id}`)
+        if (!res.ok) throw new Error('Error al generar el PDF')
+        const blob = await res.blob()
+        await uploadAndDownloadPDF(blob)
       }
-
-      const blob = pdf.output('blob')
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Sin sesión')
-      const storagePath = `${user.id}/${id}.pdf`
-      await supabase.storage.from('pdfs').upload(storagePath, blob, { upsert: true, contentType: 'application/pdf' })
-      await supabase.from('budgets').update({ pdf_url: storagePath }).eq('id', id)
-      setPdfUrl(storagePath)
-
-      const objectUrl = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = objectUrl; a.download = `presupuesto-${budget.budget_number}.pdf`
-      document.body.appendChild(a); a.click(); document.body.removeChild(a)
-      URL.revokeObjectURL(objectUrl)
     } catch (err) {
       console.error('Error generando PDF:', err)
       setSaveError('No se pudo generar el PDF. Inténtalo de nuevo.')
