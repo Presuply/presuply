@@ -17,6 +17,7 @@ import {
   useDroppable,
   type DragStartEvent,
   type DragEndEvent,
+  type DraggableSyntheticListeners,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -173,6 +174,7 @@ function ChapterSection({
   onAddItem,
   onUpdateItem,
   onDeleteItem,
+  dragListeners,
 }: {
   chapter: EditableChapter
   chIdx: number
@@ -186,6 +188,7 @@ function ChapterSection({
   onAddItem: (chapterId: string) => void
   onUpdateItem: (id: string, field: keyof EditableLineItem, value: string | number | null) => void
   onDeleteItem: (id: string) => void
+  dragListeners?: DraggableSyntheticListeners
 }) {
   const { setNodeRef: setDropRef } = useDroppable({ id: `droppable_${chapter.id}` })
   const nameRef = useRef<HTMLInputElement>(null)
@@ -194,6 +197,14 @@ function ChapterSection({
     <section className="bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] shadow-sm overflow-hidden">
       {/* Cabecera */}
       <div className="flex items-center gap-2 px-4 py-3 bg-[#F4F6F9] dark:bg-[#0D1B2A] border-b border-[#D5DCE4] dark:border-[#3A4A5C]">
+        <button
+          type="button"
+          {...dragListeners}
+          aria-label="Arrastrar capítulo"
+          className="cursor-grab active:cursor-grabbing touch-none text-[#A9B5C2] hover:text-[#6B7B8C] text-base leading-none select-none px-0.5 shrink-0"
+        >
+          ⠿
+        </button>
         <span className="text-xs font-bold text-[#A9B5C2] shrink-0">{chIdx + 1}.</span>
         <input
           ref={nameRef}
@@ -268,6 +279,35 @@ function ChapterSection({
         </button>
       </div>
     </section>
+  )
+}
+
+function SortableChapterSection(props: {
+  chapter: EditableChapter
+  chIdx: number
+  items: EditableLineItem[]
+  chSubtotal: number
+  isOnlyChapter: boolean
+  openMenuId: string | null
+  setOpenMenuId: (id: string | null) => void
+  onRename: (id: string, name: string) => void
+  onDelete: (id: string) => void
+  onAddItem: (chapterId: string) => void
+  onUpdateItem: (id: string, field: keyof EditableLineItem, value: string | number | null) => void
+  onDeleteItem: (id: string) => void
+}) {
+  const { chapter } = props
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: `chapter:${chapter.id}` })
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+      {...attributes}
+    >
+      <ChapterSection {...props} dragListeners={listeners} />
+    </div>
   )
 }
 
@@ -505,13 +545,67 @@ export default function PresupuestoEditorPage() {
     setActiveId(null)
     if (!over || active.id === over.id) return
 
+    const activeIdStr = String(active.id)
+    const overIdStr = String(over.id)
+
+    if (activeIdStr.startsWith('chapter:')) {
+      const activeChapterId = activeIdStr.replace('chapter:', '')
+
+      const getTargetChapterId = (oid: string) => {
+        if (oid.startsWith('chapter:')) return oid.replace('chapter:', '')
+        if (oid.startsWith('droppable_')) return oid.replace('droppable_', '')
+        const overItem = lineItems.find(i => i.id === oid && !i._deleted)
+        return overItem?.chapter_id ?? null
+      }
+
+      const targetChapterId = getTargetChapterId(overIdStr)
+      if (!targetChapterId || targetChapterId === activeChapterId) return
+      if (!chapters.find(c => c.id === activeChapterId && !c._deleted)) return
+      if (!chapters.find(c => c.id === targetChapterId && !c._deleted)) return
+
+      setChapters(prev => {
+        const visible = prev.filter(c => !c._deleted).sort((a, b) => a.position - b.position)
+        const oldIdx = visible.findIndex(c => c.id === activeChapterId)
+        const newIdx = visible.findIndex(c => c.id === targetChapterId)
+        if (oldIdx === -1 || newIdx === -1) return prev
+        const reordered = arrayMove(visible, oldIdx, newIdx).map((c, idx) => ({ ...c, position: idx }))
+        return prev.map(c => {
+          if (c._deleted) return c
+          return reordered.find(r => r.id === c.id) ?? c
+        })
+      })
+      markDirty()
+      return
+    }
+
     const activeItem = lineItems.find(i => i.id === active.id)
     if (!activeItem || activeItem._deleted) return
 
-    const overId = String(over.id)
+    const overId = overIdStr
 
     if (overId.startsWith('droppable_')) {
       const targetChapterId = overId.replace('droppable_', '')
+      if (!chapters.find(c => c.id === targetChapterId && !c._deleted)) return
+      setLineItems(prev => {
+        const withoutActive = prev.filter(i => i.id !== active.id)
+        const updated = { ...activeItem, chapter_id: targetChapterId }
+        let lastIdx = -1
+        for (let i = withoutActive.length - 1; i >= 0; i--) {
+          if (withoutActive[i].chapter_id === targetChapterId && !withoutActive[i]._deleted) {
+            lastIdx = i; break
+          }
+        }
+        const insertIdx = lastIdx === -1 ? withoutActive.length : lastIdx + 1
+        return renumberPositions([
+          ...withoutActive.slice(0, insertIdx), updated, ...withoutActive.slice(insertIdx),
+        ])
+      })
+      markDirty()
+      return
+    }
+
+    if (overId.startsWith('chapter:')) {
+      const targetChapterId = overId.replace('chapter:', '')
       if (!chapters.find(c => c.id === targetChapterId && !c._deleted)) return
       setLineItems(prev => {
         const withoutActive = prev.filter(i => i.id !== active.id)
@@ -1047,27 +1141,32 @@ export default function PresupuestoEditorPage() {
           onDragEnd={handleDragEnd}
         >
           <div className="space-y-4">
-            {visibleChapters.map((chapter, chIdx) => {
-              const chItems = visibleItems.filter(i => i.chapter_id === chapter.id)
-              const chSubtotal = chItems.reduce((s, i) => s + i.total, 0)
-              return (
-                <ChapterSection
-                  key={chapter.id}
-                  chapter={chapter}
-                  chIdx={chIdx}
-                  items={chItems}
-                  chSubtotal={chSubtotal}
-                  isOnlyChapter={visibleChapters.length === 1}
-                  openMenuId={openMenuId}
-                  setOpenMenuId={setOpenMenuId}
-                  onRename={renameChapter}
-                  onDelete={requestDeleteChapter}
-                  onAddItem={addItem}
-                  onUpdateItem={updateItem}
-                  onDeleteItem={deleteItem}
-                />
-              )
-            })}
+            <SortableContext
+              items={visibleChapters.map(ch => `chapter:${ch.id}`)}
+              strategy={verticalListSortingStrategy}
+            >
+              {visibleChapters.map((chapter, chIdx) => {
+                const chItems = visibleItems.filter(i => i.chapter_id === chapter.id)
+                const chSubtotal = chItems.reduce((s, i) => s + i.total, 0)
+                return (
+                  <SortableChapterSection
+                    key={chapter.id}
+                    chapter={chapter}
+                    chIdx={chIdx}
+                    items={chItems}
+                    chSubtotal={chSubtotal}
+                    isOnlyChapter={visibleChapters.length === 1}
+                    openMenuId={openMenuId}
+                    setOpenMenuId={setOpenMenuId}
+                    onRename={renameChapter}
+                    onDelete={requestDeleteChapter}
+                    onAddItem={addItem}
+                    onUpdateItem={updateItem}
+                    onDeleteItem={deleteItem}
+                  />
+                )
+              })}
+            </SortableContext>
           </div>
 
           <DragOverlay>
