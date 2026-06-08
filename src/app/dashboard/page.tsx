@@ -454,7 +454,7 @@ export default function DashboardPage() {
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* Cabecera */}
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {searchActive ? (
             <div className="flex flex-1 items-center gap-2">
               <button type="button" onClick={() => { setSearchActive(false); setSearchQuery('') }}
@@ -477,7 +477,7 @@ export default function DashboardPage() {
                 <img src="/images/logo.svg" alt="Presuply" className="h-7 w-auto" />
                 <h1 className="text-xl font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">Presupuestos</h1>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="hidden sm:flex items-center gap-2 shrink-0">
                 <div className="relative">
                   <button type="button" onClick={() => setSearchActive(true)}
                     aria-label="Buscar"
@@ -539,6 +539,37 @@ export default function DashboardPage() {
                     onSkipAll={skipTour}
                   />
                 </div>
+              </div>
+
+              <div className="sm:hidden w-full flex items-center gap-2">
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Buscar..."
+                  className="flex-1 bg-white dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] placeholder:text-[#A9B5C2] rounded-[8px] px-3 py-2 text-sm focus:outline-none focus:border-[#FF6A00] transition-colors min-w-0"
+                />
+
+                {(() => {
+                  const canUseFolders = getPlanLimits(planKey, isTeam).canUseFolders
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => canUseFolders ? (setCreatingFolder(true), setOpenMenuId(null)) : setShowFolderUpgradeModal(true)}
+                      className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 shrink-0"
+                    >
+                      {canUseFolders ? null : <span className="text-xs">🔒</span>}
+                      Carpeta
+                    </button>
+                  )
+                })()}
+
+                <Link
+                  href="/dashboard/nuevo"
+                  className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-3 py-2 text-sm transition-colors inline-block shrink-0"
+                >
+                  Nuevo
+                </Link>
               </div>
             </>
           )}
