@@ -177,6 +177,8 @@ function ChapterSection({
   items,
   chSubtotal,
   isOnlyChapter,
+  isOpen,
+  onToggleOpen,
   openMenuId,
   setOpenMenuId,
   onRename,
@@ -191,6 +193,8 @@ function ChapterSection({
   items: EditableLineItem[]
   chSubtotal: number
   isOnlyChapter: boolean
+  isOpen: boolean
+  onToggleOpen: () => void
   openMenuId: string | null
   setOpenMenuId: (id: string | null) => void
   onRename: (id: string, name: string) => void
@@ -204,7 +208,10 @@ function ChapterSection({
   const nameRef = useRef<HTMLInputElement>(null)
 
   return (
-    <section className="bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] shadow-sm overflow-hidden">
+    <section
+      ref={setDropRef}
+      className="bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] shadow-sm overflow-hidden"
+    >
       {/* Cabecera */}
       <div className="flex items-center gap-2 px-4 py-3 bg-[#F4F6F9] dark:bg-[#0D1B2A] border-b border-[#D5DCE4] dark:border-[#3A4A5C]">
         <button
@@ -214,6 +221,14 @@ function ChapterSection({
           className="cursor-grab active:cursor-grabbing touch-none text-[#A9B5C2] hover:text-[#6B7B8C] text-base leading-none select-none px-0.5 shrink-0"
         >
           ⠿
+        </button>
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); onToggleOpen() }}
+          aria-label={isOpen ? 'Contraer capítulo' : 'Expandir capítulo'}
+          className="touch-none text-[#A9B5C2] hover:text-[#FF6A00] text-base leading-none select-none px-0.5 shrink-0"
+        >
+          {isOpen ? '←' : '→'}
         </button>
         <span className="text-xs font-bold text-[#A9B5C2] shrink-0">{chIdx + 1}.</span>
         <input
@@ -299,6 +314,8 @@ function SortableChapterSection(props: {
   items: EditableLineItem[]
   chSubtotal: number
   isOnlyChapter: boolean
+  isOpen: boolean
+  onToggleOpen: () => void
   openMenuId: string | null
   setOpenMenuId: (id: string | null) => void
   onRename: (id: string, name: string) => void
@@ -358,6 +375,9 @@ export default function PresupuestoEditorPage() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [budgetSectionOpen, setBudgetSectionOpen] = useState(true)
+  const [clientSectionOpen, setClientSectionOpen] = useState(true)
+  const [collapsedChapterIds, setCollapsedChapterIds] = useState<Set<string>>(() => new Set())
 
   const [budget, setBudget] = useState<BudgetHeader>({
     client_name: '', client_email: '', client_address: '', client_phone: '', client_nif: '',
@@ -787,6 +807,11 @@ export default function PresupuestoEditorPage() {
       .filter(c => !c._deleted)
       .map(c => ({ ...c, id: tempChapterMap.get(c.id) ?? c.id, _isNew: false }))
     )
+    setCollapsedChapterIds(prev => {
+      const next = new Set<string>()
+      for (const cid of prev) next.add(tempChapterMap.get(cid) ?? cid)
+      return next
+    })
     setLineItems(prev => prev
       .filter(i => !i._deleted)
       .map(i => ({
@@ -1050,6 +1075,7 @@ export default function PresupuestoEditorPage() {
 
   const visibleChapters = chapters.filter(c => !c._deleted).sort((a, b) => a.position - b.position)
   const activeItem = activeId ? lineItems.find(i => i.id === activeId) : null
+  const allChaptersCollapsed = visibleChapters.length > 0 && visibleChapters.every(ch => collapsedChapterIds.has(ch.id))
 
   return (
     <main
@@ -1093,111 +1119,157 @@ export default function PresupuestoEditorPage() {
 
         {/* Datos del presupuesto */}
         <section className={sec}>
-          <h2 className={secTitle}>Datos del presupuesto</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className={lbl}>Fecha</label>
-              <input type="date" value={budget.issued_date}
-                onChange={e => updateBudgetField('issued_date', e.target.value)} className={inputClass} />
-            </div>
-            <div className="space-y-1">
-              <label className={lbl}>Validez (días)</label>
-              <input type="number" value={budget.valid_days} min={1}
-                onChange={e => updateBudgetField('valid_days', Number(e.target.value))} className={inputClass} />
-            </div>
-            <div className="space-y-1">
-              <label className={lbl}>Nº presupuesto (auto)</label>
-              <input type="text" value={budget.budget_number} disabled
-                className="w-full bg-[#EDF0F4] dark:bg-[#3A4A5C] border border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[8px] px-3 py-2 text-sm text-[#A9B5C2]" />
-            </div>
-            <div className="space-y-1">
-              <label className={lbl}>Nº factura / referencia</label>
-              <input type="text" value={budget.invoice_number}
-                onChange={e => updateBudgetField('invoice_number', e.target.value)}
-                placeholder="Ej. 26/001" className={inputClass} />
-            </div>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className={secTitle}>Datos del presupuesto</h2>
+            <button
+              type="button"
+              aria-expanded={budgetSectionOpen}
+              aria-controls="budget-details"
+              onClick={() => setBudgetSectionOpen(v => !v)}
+              className="text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#FF6A00] transition-colors"
+            >
+              {budgetSectionOpen ? '↰ Contraer' : '↴ Expandir'}
+            </button>
           </div>
-          {/* Toggle: mejorar descripciones */}
-          <label className="flex items-start gap-3 cursor-pointer select-none pt-1">
-            <div className="relative mt-0.5 shrink-0" onClick={e => e.preventDefault()}>
-              <input type="checkbox" checked={budget.expand_descriptions}
-                onChange={e => updateBudgetField('expand_descriptions', e.target.checked)}
-                className="sr-only" />
-              <div
-                onClick={() => updateBudgetField('expand_descriptions', !budget.expand_descriptions)}
-                className={`w-10 h-6 rounded-full transition-colors cursor-pointer ${budget.expand_descriptions ? 'bg-[#FF6A00]' : 'bg-[#D5DCE4] dark:bg-[#3A4A5C]'}`}
-              />
-              <div
-                onClick={() => updateBudgetField('expand_descriptions', !budget.expand_descriptions)}
-                className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform cursor-pointer ${budget.expand_descriptions ? 'translate-x-5' : 'translate-x-1'}`}
-              />
-            </div>
-            <div>
-              <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">Mejorar descripciones en el PDF</span>
-              <p className="text-xs text-[#A9B5C2] mt-0.5">
-                {budget.expand_descriptions
-                  ? 'Las descripciones se expandirán a texto técnico profesional al generar el PDF'
-                  : 'El PDF mostrará exactamente lo que has escrito'}
-              </p>
-            </div>
-          </label>
-
-          <div className="flex flex-wrap gap-x-6 gap-y-3 pt-1">
-            {profileIban && (
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input type="checkbox" checked={budget.show_iban}
-                  onChange={e => updateBudgetField('show_iban', e.target.checked)}
-                  className="accent-[#FF6A00] w-4 h-4" />
-                <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">Mostrar IBAN en el PDF</span>
+          {budgetSectionOpen && (
+            <div id="budget-details" className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className={lbl}>Fecha</label>
+                  <input type="date" value={budget.issued_date}
+                    onChange={e => updateBudgetField('issued_date', e.target.value)} className={inputClass} />
+                </div>
+                <div className="space-y-1">
+                  <label className={lbl}>Validez (días)</label>
+                  <input type="number" value={budget.valid_days} min={1}
+                    onChange={e => updateBudgetField('valid_days', Number(e.target.value))} className={inputClass} />
+                </div>
+                <div className="space-y-1">
+                  <label className={lbl}>Nº presupuesto (auto)</label>
+                  <input type="text" value={budget.budget_number} disabled
+                    className="w-full bg-[#EDF0F4] dark:bg-[#3A4A5C] border border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[8px] px-3 py-2 text-sm text-[#A9B5C2]" />
+                </div>
+                <div className="space-y-1">
+                  <label className={lbl}>Nº factura / referencia</label>
+                  <input type="text" value={budget.invoice_number}
+                    onChange={e => updateBudgetField('invoice_number', e.target.value)}
+                    placeholder="Ej. 26/001" className={inputClass} />
+                </div>
+              </div>
+              <label className="flex items-start gap-3 cursor-pointer select-none pt-1">
+                <div className="relative mt-0.5 shrink-0" onClick={e => e.preventDefault()}>
+                  <input type="checkbox" checked={budget.expand_descriptions}
+                    onChange={e => updateBudgetField('expand_descriptions', e.target.checked)}
+                    className="sr-only" />
+                  <div
+                    onClick={() => updateBudgetField('expand_descriptions', !budget.expand_descriptions)}
+                    className={`w-10 h-6 rounded-full transition-colors cursor-pointer ${budget.expand_descriptions ? 'bg-[#FF6A00]' : 'bg-[#D5DCE4] dark:bg-[#3A4A5C]'}`}
+                  />
+                  <div
+                    onClick={() => updateBudgetField('expand_descriptions', !budget.expand_descriptions)}
+                    className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform cursor-pointer ${budget.expand_descriptions ? 'translate-x-5' : 'translate-x-1'}`}
+                  />
+                </div>
+                <div>
+                  <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">Mejorar descripciones en el PDF</span>
+                  <p className="text-xs text-[#A9B5C2] mt-0.5">
+                    {budget.expand_descriptions
+                      ? 'Las descripciones se expandirán a texto técnico profesional al generar el PDF'
+                      : 'El PDF mostrará exactamente lo que has escrito'}
+                  </p>
+                </div>
               </label>
-            )}
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input type="checkbox" checked={budget.show_signature}
-                onChange={e => updateBudgetField('show_signature', e.target.checked)}
-                className="accent-[#FF6A00] w-4 h-4" />
-              <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">Incluir sección de firma</span>
-            </label>
-          </div>
+
+              <div className="flex flex-wrap gap-x-6 gap-y-3 pt-1">
+                {profileIban && (
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={budget.show_iban}
+                      onChange={e => updateBudgetField('show_iban', e.target.checked)}
+                      className="accent-[#FF6A00] w-4 h-4" />
+                    <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">Mostrar IBAN en el PDF</span>
+                  </label>
+                )}
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={budget.show_signature}
+                    onChange={e => updateBudgetField('show_signature', e.target.checked)}
+                    className="accent-[#FF6A00] w-4 h-4" />
+                  <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">Incluir sección de firma</span>
+                </label>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Datos del cliente */}
         <section className={sec}>
-          <h2 className={secTitle}>Datos del cliente</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className={lbl}>Nombre / empresa</label>
-              <input type="text" value={budget.client_name}
-                onChange={e => updateBudgetField('client_name', e.target.value)}
-                placeholder="Nombre del cliente" className={inputClass} />
-            </div>
-            <div className="space-y-1">
-              <label className={lbl}>NIF / CIF</label>
-              <input type="text" value={budget.client_nif}
-                onChange={e => updateBudgetField('client_nif', e.target.value)}
-                placeholder="12345678A" className={inputClass} />
-            </div>
-            <div className="space-y-1">
-              <label className={lbl}>Email</label>
-              <input type="email" value={budget.client_email}
-                onChange={e => updateBudgetField('client_email', e.target.value)}
-                placeholder="cliente@email.com" className={inputClass} />
-            </div>
-            <div className="space-y-1">
-              <label className={lbl}>Teléfono</label>
-              <input type="tel" value={budget.client_phone}
-                onChange={e => updateBudgetField('client_phone', e.target.value)}
-                placeholder="600 000 000" className={inputClass} />
-            </div>
-            <div className="space-y-1 sm:col-span-2">
-              <label className={lbl}>Dirección</label>
-              <input type="text" value={budget.client_address}
-                onChange={e => updateBudgetField('client_address', e.target.value)}
-                placeholder="Calle, número, localidad" className={inputClass} />
-            </div>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className={secTitle}>Datos del cliente</h2>
+            <button
+              type="button"
+              aria-expanded={clientSectionOpen}
+              aria-controls="client-details"
+              onClick={() => setClientSectionOpen(v => !v)}
+              className="text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#FF6A00] transition-colors"
+            >
+              {clientSectionOpen ? '↰ Contraer' : '↴ Expandir'}
+            </button>
           </div>
+          {clientSectionOpen && (
+            <div id="client-details" className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className={lbl}>Nombre / empresa</label>
+                  <input type="text" value={budget.client_name}
+                    onChange={e => updateBudgetField('client_name', e.target.value)}
+                    placeholder="Nombre del cliente" className={inputClass} />
+                </div>
+                <div className="space-y-1">
+                  <label className={lbl}>NIF / CIF</label>
+                  <input type="text" value={budget.client_nif}
+                    onChange={e => updateBudgetField('client_nif', e.target.value)}
+                    placeholder="12345678A" className={inputClass} />
+                </div>
+                <div className="space-y-1">
+                  <label className={lbl}>Email</label>
+                  <input type="email" value={budget.client_email}
+                    onChange={e => updateBudgetField('client_email', e.target.value)}
+                    placeholder="cliente@email.com" className={inputClass} />
+                </div>
+                <div className="space-y-1">
+                  <label className={lbl}>Teléfono</label>
+                  <input type="tel" value={budget.client_phone}
+                    onChange={e => updateBudgetField('client_phone', e.target.value)}
+                    placeholder="600 000 000" className={inputClass} />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <label className={lbl}>Dirección</label>
+                  <input type="text" value={budget.client_address}
+                    onChange={e => updateBudgetField('client_address', e.target.value)}
+                    placeholder="Calle, número, localidad" className={inputClass} />
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Capítulos y partidas */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setCollapsedChapterIds(new Set())}
+            className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium transition-colors"
+          >
+            Expandir todos
+          </button>
+          <button
+            type="button"
+            onClick={() => setCollapsedChapterIds(new Set(chapters.filter(c => !c._deleted).map(c => c.id)))}
+            disabled={allChaptersCollapsed}
+            className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium transition-colors disabled:opacity-40"
+          >
+            Contraer todos
+          </button>
+        </div>
         <DndContext
           sensors={sensors}
           collisionDetection={collisionDetectionStrategy}
@@ -1214,6 +1286,7 @@ export default function PresupuestoEditorPage() {
                   .filter(i => i.chapter_id === chapter.id)
                   .sort((a, b) => a.position - b.position)
                 const chSubtotal = chItems.reduce((s, i) => s + i.total, 0)
+                const isOpen = !collapsedChapterIds.has(chapter.id)
                 return (
                   <SortableChapterSection
                     key={chapter.id}
@@ -1222,6 +1295,13 @@ export default function PresupuestoEditorPage() {
                     items={chItems}
                     chSubtotal={chSubtotal}
                     isOnlyChapter={visibleChapters.length === 1}
+                    isOpen={isOpen}
+                    onToggleOpen={() => setCollapsedChapterIds(prev => {
+                      const next = new Set(prev)
+                      if (next.has(chapter.id)) next.delete(chapter.id)
+                      else next.add(chapter.id)
+                      return next
+                    })}
                     openMenuId={openMenuId}
                     setOpenMenuId={setOpenMenuId}
                     onRename={renameChapter}
