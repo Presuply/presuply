@@ -1,9 +1,13 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import Tooltip from '@/components/Tooltip'
+import { usePageTooltips } from '@/hooks/usePageTooltips'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useTheme } from '@/components/ThemeProvider'
+import { getPlanLimits, getPlanDisplayName, type PlanKey } from '@/lib/plans'
 
 interface ProfileForm {
   full_name: string
@@ -43,6 +47,20 @@ export default function PerfilPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [planKey, setPlanKey] = useState<PlanKey>('trial')
+  const [subscriptionStatus, setSubscriptionStatus] = useState('trial')
+  const [budgetsUsed, setBudgetsUsed] = useState(0)
+  const [budgetsThisMonth, setBudgetsThisMonth] = useState(0)
+  const [isTeam, setIsTeam] = useState(false)
+  const [openingPortal, setOpeningPortal] = useState(false)
+  const [teamMembers, setTeamMembers] = useState<{ id: string; email: string; created_at: string }[]>([])
+  const [teamLoading, setTeamLoading] = useState(false)
+  const [newMemberEmail, setNewMemberEmail] = useState('')
+  const [newMemberPassword, setNewMemberPassword] = useState('')
+  const [teamError, setTeamError] = useState<string | null>(null)
+  const [teamSuccess, setTeamSuccess] = useState<string | null>(null)
+  const [creatingMember, setCreatingMember] = useState(false)
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -70,6 +88,11 @@ export default function PerfilPage() {
           logo_url: data.logo_url,
           template_url: data.template_url,
         })
+        setPlanKey((data.plan_key ?? 'trial') as PlanKey)
+        setSubscriptionStatus(data.subscription_status ?? 'trial')
+        setBudgetsUsed(data.budgets_used ?? 0)
+        setBudgetsThisMonth(data.budgets_this_month ?? 0)
+        setIsTeam(data.is_team ?? false)
 
         if (data.logo_url) {
           const { data: signed } = await supabase.storage
@@ -169,6 +192,84 @@ export default function PerfilPage() {
     setProfile(prev => ({ ...prev, [field]: value }))
   }
 
+  // Cargar equipo cuando el plan lo permite
+  useEffect(() => {
+    if (planKey !== 'profesional' && planKey !== 'empresa' && !isTeam) return
+    setTeamLoading(true)
+    fetch('/api/team')
+      .then(r => r.json())
+      .then(d => { if (d.members) setTeamMembers(d.members) })
+      .finally(() => setTeamLoading(false))
+  }, [planKey, isTeam])
+
+  async function handleCreateMember(e: React.FormEvent) {
+    e.preventDefault()
+    setTeamError(null)
+    setTeamSuccess(null)
+    if (newMemberPassword.length < 8) {
+      setTeamError('La contraseña debe tener al menos 8 caracteres.')
+      return
+    }
+    setCreatingMember(true)
+    try {
+      const res = await fetch('/api/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: newMemberEmail, password: newMemberPassword }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const msgs: Record<string, string> = {
+          plan_no_teams: 'Tu plan no incluye equipos.',
+          member_limit_reached: 'Has alcanzado el límite de miembros de tu plan.',
+        }
+        setTeamError(msgs[data.error] ?? data.error ?? 'Error al crear el miembro.')
+      } else {
+        setTeamSuccess(`Cuenta creada para ${data.email}.`)
+        setNewMemberEmail('')
+        setNewMemberPassword('')
+        // Recargar lista
+        const r = await fetch('/api/team')
+        const d = await r.json()
+        if (d.members) setTeamMembers(d.members)
+      }
+    } finally {
+      setCreatingMember(false)
+    }
+  }
+
+  async function handleRemoveMember(memberId: string) {
+    if (!window.confirm('¿Eliminar este miembro? Sus presupuestos pasarán a tu cuenta.')) return
+    setRemovingMemberId(memberId)
+    setTeamError(null)
+    try {
+      const res = await fetch('/api/team', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId }),
+      })
+      if (res.ok) {
+        setTeamMembers(prev => prev.filter(m => m.id !== memberId))
+      } else {
+        const d = await res.json()
+        setTeamError(d.error ?? 'Error al eliminar el miembro.')
+      }
+    } finally {
+      setRemovingMemberId(null)
+    }
+  }
+
+  async function handlePortal() {
+    setOpeningPortal(true)
+    try {
+      const res = await fetch('/api/stripe/portal', { method: 'POST' })
+      const data = await res.json()
+      if (data.url) window.location.href = data.url
+    } finally {
+      setOpeningPortal(false)
+    }
+  }
+
   async function handleSignOut() {
     const supabase = createClient()
     await supabase.auth.signOut()
@@ -176,6 +277,9 @@ export default function PerfilPage() {
   }
 
   // Nombre del archivo de plantilla para mostrar al usuario
+  const { activeId: tooltipId, markSeen, skipAll: skipTour } =
+    usePageTooltips(['perf_sub', 'perf_team'])
+
   const templateDisplayName = templateFile?.name
     ?? (profile.template_url ? profile.template_url.split('/').pop() : null)
 
@@ -317,6 +421,163 @@ export default function PerfilPage() {
           className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
           {saving ? 'Guardando...' : 'Guardar perfil'}
         </button>
+
+        {/* Mi suscripción */}
+        {(() => {
+          const limits = getPlanLimits(planKey, isTeam)
+          const isTrial = planKey === 'trial' && !isTeam
+          const monthlyLimit = limits.budgetsPerMonth
+          const usedThisMonth = budgetsThisMonth
+          const progressPct = monthlyLimit ? Math.min(100, Math.round((usedThisMonth / monthlyLimit) * 100)) : 0
+          const hasSubscription = ['trialing', 'active', 'past_due'].includes(subscriptionStatus)
+
+          const planColors: Record<string, string> = {
+            trial:       'bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#6B7B8C] dark:text-[#A9B5C2]',
+            autonomo:    'bg-[#3E7BFA]/15 text-[#3E7BFA]',
+            profesional: 'bg-[#1FB57A]/15 text-[#1FB57A]',
+            empresa:     'bg-[#9B59B6]/15 text-[#9B59B6]',
+          }
+          const badgeClass = isTeam ? 'bg-[#FF6A00]/15 text-[#FF6A00]' : (planColors[planKey] ?? planColors.trial)
+
+          return (
+            <section className={sec}>
+              <div className="relative inline-block">
+                <h2 className={secTitle}>Mi suscripción</h2>
+                <Tooltip
+                  content="Gestiona tu plan o cancela cuando quieras"
+                  placement="right"
+                  isActive={tooltipId === 'perf_sub'}
+                  onDismiss={() => markSeen('perf_sub')}
+                  onSkipAll={skipTour}
+                />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className={`inline-block rounded-full px-3 py-1 text-sm font-semibold ${badgeClass}`}>
+                  {isTeam ? 'Equipo' : getPlanDisplayName(planKey)}
+                </span>
+                {subscriptionStatus === 'past_due' && (
+                  <span className="inline-block rounded-full px-3 py-1 text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-[#E5484D]">
+                    Pago pendiente
+                  </span>
+                )}
+              </div>
+
+              {isTrial ? (
+                <div className="space-y-1">
+                  <p className="text-sm text-[#6B7B8C] dark:text-[#A9B5C2]">
+                    Te quedan <strong className="text-[#0D1B2A] dark:text-[#F4F6F9]">{Math.max(0, 3 - budgetsUsed)}</strong> de 3 presupuestos gratuitos.
+                  </p>
+                  <div className="w-full bg-[#EDF0F4] dark:bg-[#3A4A5C] rounded-full h-2">
+                    <div className="bg-[#FF6A00] rounded-full h-2 transition-all" style={{ width: `${Math.min(100, Math.round((budgetsUsed / 3) * 100))}%` }} />
+                  </div>
+                </div>
+              ) : monthlyLimit !== null ? (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-[#6B7B8C] dark:text-[#A9B5C2]">
+                    <span>Presupuestos este mes</span>
+                    <span className="font-semibold text-[#0D1B2A] dark:text-[#F4F6F9]">{usedThisMonth} / {monthlyLimit}</span>
+                  </div>
+                  <div className="w-full bg-[#EDF0F4] dark:bg-[#3A4A5C] rounded-full h-2">
+                    <div
+                      className={`rounded-full h-2 transition-all ${progressPct >= 90 ? 'bg-[#E5484D]' : progressPct >= 70 ? 'bg-[#F5A623]' : 'bg-[#1FB57A]'}`}
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-[#6B7B8C] dark:text-[#A9B5C2]">Presupuestos ilimitados.</p>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                {hasSubscription && (
+                  <button type="button" onClick={handlePortal} disabled={openingPortal}
+                    className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-4 py-2.5 text-sm font-medium disabled:opacity-40 transition-colors">
+                    {openingPortal ? 'Abriendo...' : 'Gestionar suscripción'}
+                  </button>
+                )}
+                <Link href="/pricing"
+                  className="flex-1 bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm text-center transition-colors">
+                  {isTrial ? 'Activar plan' : 'Ver todos los planes'}
+                </Link>
+              </div>
+
+              {/* Subsección equipo */}
+              {(planKey === 'profesional' || planKey === 'empresa' || isTeam) && (() => {
+                const limits = getPlanLimits(planKey, isTeam)
+                const maxMembers = limits.maxUsers !== null ? limits.maxUsers - 1 : null
+                const limitReached = maxMembers !== null && teamMembers.length >= maxMembers
+                return (
+                  <div className="border-t border-[#D5DCE4] dark:border-[#3A4A5C] pt-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="relative inline-block">
+                        <p className="text-xs font-bold text-[#6B7B8C] dark:text-[#A9B5C2] uppercase tracking-wider">Equipo</p>
+                        <Tooltip
+                          content="Invita a tu equipo a colaborar en tus presupuestos"
+                          placement="right"
+                          isActive={tooltipId === 'perf_team'}
+                          onDismiss={() => markSeen('perf_team')}
+                          onSkipAll={skipTour}
+                        />
+                      </div>
+                      <p className="text-xs text-[#A9B5C2]">
+                        {teamMembers.length} de {maxMembers !== null ? maxMembers : '∞'} miembros
+                      </p>
+                    </div>
+
+                    {teamLoading ? (
+                      <p className="text-xs text-[#A9B5C2] italic">Cargando...</p>
+                    ) : teamMembers.length > 0 ? (
+                      <ul className="space-y-2">
+                        {teamMembers.map(m => (
+                          <li key={m.id} className="flex items-center justify-between gap-2 bg-[#F4F6F9] dark:bg-[#0D1B2A] rounded-[8px] px-3 py-2">
+                            <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{m.email}</span>
+                            <button type="button"
+                              onClick={() => handleRemoveMember(m.id)}
+                              disabled={removingMemberId === m.id}
+                              className="shrink-0 text-[#A9B5C2] hover:text-[#E5484D] disabled:opacity-40 transition-colors text-xs font-bold px-1">
+                              {removingMemberId === m.id ? '...' : '✕'}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-[#A9B5C2] italic">Sin miembros todavía.</p>
+                    )}
+
+                    {limitReached ? (
+                      <p className="text-xs text-[#A9B5C2] bg-[#F4F6F9] dark:bg-[#0D1B2A] rounded-[8px] px-3 py-2">
+                        Límite de miembros alcanzado. Actualiza tu plan para añadir más.
+                      </p>
+                    ) : (
+                      <form onSubmit={handleCreateMember} className="space-y-2">
+                        <input type="email" value={newMemberEmail}
+                          onChange={e => setNewMemberEmail(e.target.value)}
+                          placeholder="Email del nuevo miembro" required
+                          className={inputClass} />
+                        <input type="password" value={newMemberPassword}
+                          onChange={e => setNewMemberPassword(e.target.value)}
+                          placeholder="Contraseña (mínimo 8 caracteres)" minLength={8} required
+                          className={inputClass} />
+                        <button type="submit" disabled={creatingMember}
+                          className="w-full border border-[#FF6A00] text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/20 font-semibold rounded-[8px] px-4 py-2 text-sm disabled:opacity-40 transition-colors">
+                          {creatingMember ? 'Creando...' : 'Crear cuenta de miembro'}
+                        </button>
+                      </form>
+                    )}
+
+                    {teamError && (
+                      <p className="text-xs text-[#E5484D] bg-red-50 dark:bg-red-900/20 rounded-[8px] px-3 py-2">{teamError}</p>
+                    )}
+                    {teamSuccess && (
+                      <p className="text-xs text-[#1FB57A] bg-green-50 dark:bg-green-900/20 rounded-[8px] px-3 py-2">{teamSuccess}</p>
+                    )}
+                  </div>
+                )
+              })()}
+            </section>
+          )
+        })()}
 
         {/* Preferencias */}
         <section className={sec}>

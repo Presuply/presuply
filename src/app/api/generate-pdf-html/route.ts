@@ -4,25 +4,100 @@ import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 
-const MODEL = 'claude-sonnet-4-6'
+const MODEL = 'claude-opus-4-7'
+const MODEL_SONNET = 'claude-sonnet-4-6'
 
-const SYSTEM_PROMPT = `Eres un experto en maquetación de presupuestos de construcción en España. Recibes una plantilla de presupuesto existente y los datos de un nuevo presupuesto. Tu tarea es generar HTML completo (con CSS inline) que imite exactamente la estructura y disposición de la plantilla, sustituyendo los datos antiguos por los nuevos.
+const SYSTEM_PROMPT = `Eres un experto maquetador de documentos profesionales especializados en presupuestos de construcción y reformas en España. Tu tarea es generar HTML completo y autocontenido con CSS inline que produzca un presupuesto profesional de máxima calidad visual.
 
-REGLAS:
-1. Analiza la plantilla: identifica la disposición (columnas de datos, tabla de partidas, resumen de precios, pie de página)
-2. Reproduce esa misma estructura en HTML con CSS inline
-3. Sustituye TODOS los datos de la plantilla por los datos nuevos
-4. Mantén el mismo orden de secciones y campos
-5. Usa los mismos estilos visuales aproximados (negrita donde había negrita, tablas donde había tablas, dos columnas donde había dos columnas)
-6. El HTML debe estar listo para imprimir en A4
-7. Devuelve SOLO el HTML completo desde <!DOCTYPE html> hasta </html>, sin explicaciones ni marcas de código
+ANÁLISIS DE LA PLANTILLA:
+Si recibes una imagen de plantilla del usuario, analiza:
+- Disposición general (columnas de datos, márgenes, espaciado)
+- Jerarquía visual (qué destaca, qué es secundario)
+- Estilo tipográfico aproximado
+- Presencia de líneas, bordes, separadores
+Usa esa estructura como referencia, pero mejora la presentación visual: más limpieza, mejor tipografía, mejor uso del espacio. No copies pixel a pixel — interpreta y mejora.
 
-DATOS DEL PRESUPUESTO que recibirás en JSON:
-- empresa: nombre, nif, dirección, teléfono, email, iban
-- cliente: nombre, nif, dirección, teléfono, email
-- presupuesto: número, fecha, validez, título
-- partidas: descripción, unidad, cantidad, precio_unitario, total
-- resumen: subtotal, gastos_generales, beneficio_industrial, extras, base_imponible, tipo_impuesto, porcentaje_impuesto, impuesto, total_final`
+Si no hay plantilla, genera un diseño propio profesional y limpio siguiendo las reglas de abajo.
+
+REGLAS DE DISEÑO OBLIGATORIAS:
+1. Tipografía: usa Arial, Helvetica o sans-serif del sistema. Nunca fuentes externas — el HTML debe funcionar sin conexión.
+2. Página A4 (210mm × 297mm), márgenes 15mm por todos los lados.
+3. Todo el CSS es inline — no uses <style> externo ni clases.
+4. Paleta neutra y profesional: blanco, gris muy claro (#f8f8f8), gris medio (#666), negro suave (#1a1a1a). Si el usuario tiene color de marca, úsalo solo en la cabecera y acento.
+5. El HTML debe empezar con <!DOCTYPE html> y terminar con </html>.
+6. Nunca incluyas explicaciones, comentarios ni texto fuera del HTML.
+
+ESTRUCTURA OBLIGATORIA DEL DOCUMENTO:
+
+CABECERA (dos columnas):
+- Izquierda: si hay logo, mostrarlo (máx 80px alto). Nombre de empresa en negrita 16px. NIF, dirección, teléfono, email en 11px gris.
+- Derecha: 'PRESUPUESTO' en mayúsculas negrita 20px. Número de presupuesto, fecha de emisión, validez en días. Todo alineado a la derecha.
+- Separador horizontal fino (#ddd) bajo la cabecera.
+
+DATOS DEL CLIENTE (si los hay):
+- Bloque 'DATOS DEL CLIENTE' con fondo gris muy claro (#f8f8f8), padding 8px, border-radius 4px.
+- Nombre/razón social, NIF/CIF, dirección, teléfono, email.
+- Solo mostrar los campos que tengan valor.
+
+TABLA DE PARTIDAS (por capítulos):
+- Cabecera de tabla: fondo #1a1a1a, texto blanco, 11px uppercase. Columnas: DESCRIPCIÓN (50%) | UDS. (10%) | PRECIO/UD. (18%) | TOTAL (22%)
+- Por cada capítulo:
+  * Fila de capítulo: fondo #f0f0f0, texto negrita 12px, nombre del capítulo a la izquierda, subtotal a la derecha.
+  * Filas de partidas: fondo blanco y #fafafa alternado, 11px.
+  * Números alineados a la derecha, separador decimal coma.
+- Última fila: borde superior doble.
+
+RESUMEN DE PRECIOS (alineado a la derecha, ancho 45%):
+Mostrar solo las líneas con valor > 0:
+  Presupuesto de ejecución material:   X.XXX,XX €
+  Gastos generales X%:                 X.XXX,XX €  (si activado)
+  Beneficio industrial X%:             X.XXX,XX €  (si activado)
+  [descripción extras]:                X.XXX,XX €  (si > 0)
+  ─────────────────────────────────────────────────
+  Base imponible:                      X.XXX,XX €
+  IGIC X% / IVA X%:                   X.XXX,XX €
+  ═════════════════════════════════════════════════
+  TOTAL:                               X.XXX,XX €  (negrita 14px)
+
+CONDICIONES (si hay notas):
+- Bloque con título 'CONDICIONES' en gris, texto 10px.
+
+IBAN (solo si show_iban = true y hay IBAN):
+- 'Número de cuenta (IBAN): XX XX XXXX...' en 10px gris.
+
+FIRMA (solo si show_signature = true):
+- Tres columnas: 'Lugar y fecha:', 'Firma del cliente:', 'Firma y sello:'
+- Línea horizontal bajo cada una para firmar.
+- Espacio de 40px sobre las líneas.
+
+PIE DE PÁGINA:
+- Línea separadora fina.
+- Datos completos de la empresa en 9px gris centrado.
+- Si hay varias páginas: 'Página X de Y' a la derecha.
+
+FORMATO DE NÚMEROS:
+- Siempre con separador de miles (punto) y decimal (coma): 1.234,56 €
+- Nunca uses el formato anglosajón con punto decimal.
+
+IDIOMA: Todo en español. Siempre.`
+
+const EXPAND_SYSTEM_PROMPT = `Eres un experto en construcción y reformas en España. Recibes una lista de partidas de presupuesto con descripciones cortas escritas por un profesional.
+Tu tarea es expandir cada descripción a texto técnico profesional completo, como aparecería en un presupuesto formal de construcción.
+
+REGLAS ESTRICTAS:
+- Mantén EXACTAMENTE la cantidad, unidad y precio del original — nunca los cambies
+- Solo expande el campo 'descripcion'
+- La descripción expandida debe incluir: tipo de material, marca si se puede inferir, especificaciones técnicas, método de colocación, incluyendo medios auxiliares
+- Si la descripción ya es técnica y completa, devuélvela tal cual sin cambios
+- Si no puedes inferir especificaciones, expande con términos genéricos profesionales del sector
+- Devuelve SOLO JSON válido, sin texto adicional
+
+Ejemplo:
+Input: { "descripcion": "pladur cocina 30m2", "cantidad": 30, "unidad": "m²", "precio_unitario": 22, "total": 660 }
+Output: { "descripcion": "Suministro y colocación de placa de yeso laminado tipo estándar de 13mm de espesor sobre estructura metálica galvanizada, incluyendo tratamiento de juntas con cinta y pasta, lijado y medios auxiliares. Medida la superficie ejecutada.", "cantidad": 30, "unidad": "m²", "precio_unitario": 22, "total": 660 }
+
+Formato de respuesta — array JSON con las mismas partidas pero con descripciones expandidas:
+[{ "descripcion": "...", "unidad": "...", "cantidad": 0, "precio_unitario": 0, "total": 0 }]`
 
 // Edge-compatible base64 encoding
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -52,19 +127,53 @@ function generateFallbackHtml(data: {
   company: { name: string; nif: string; address: string; phone: string; email: string; iban: string }
   client: { name: string; nif: string; address: string; phone: string; email: string }
   budget: { ref: string; date: string; validDays: number }
-  lineItems: Array<{ description: string; unit: string; quantity: number; unit_price: number; total: number }>
+  chapters: Array<{ id: string; name: string; position: number }>
+  lineItems: Array<{ chapter_id: string | null; description: string; unit: string; quantity: number; unit_price: number; total: number }>
   totals: { subtotal: number; overhead: number; overheadRate: number; overheadEnabled: boolean; profit: number; profitRate: number; profitEnabled: boolean; extras: number; extrasDesc: string; baseImponible: number; taxType: string; taxRate: number; taxAmount: number; total: number }
+  show_iban: boolean
+  show_signature: boolean
 }): string {
-  const { company, client, budget, lineItems, totals } = data
+  const { company, client, budget, chapters, lineItems, totals, show_iban, show_signature } = data
 
-  const itemRows = lineItems.map(i => `
+  function renderItemRow(i: { description: string; unit: string; quantity: number; unit_price: number; total: number }) {
+    return `
     <tr>
       <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9.5pt;">${i.description}</td>
       <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9.5pt;text-align:center;">${i.unit || '—'}</td>
       <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9.5pt;text-align:right;">${fmt(i.quantity)}</td>
       <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9.5pt;text-align:right;">${fmt(i.unit_price)} €</td>
       <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9.5pt;text-align:right;font-weight:500;">${fmt(i.total)} €</td>
-    </tr>`).join('')
+    </tr>`
+  }
+
+  let itemRows: string
+  if (chapters.length > 0) {
+    const sorted = [...chapters].sort((a, b) => a.position - b.position)
+    const rows: string[] = []
+    for (const ch of sorted) {
+      const chItems = lineItems.filter(i => i.chapter_id === ch.id)
+      if (chItems.length === 0) continue
+      const chSubtotal = chItems.reduce((s, i) => s + i.total, 0)
+      rows.push(`
+    <tr style="background:#f3f4f6;">
+      <td colspan="4" style="padding:6px 8px;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">${ch.name}</td>
+      <td style="padding:6px 8px;font-size:9pt;font-weight:700;text-align:right;">${fmt(chSubtotal)} €</td>
+    </tr>`)
+      rows.push(...chItems.map(renderItemRow))
+    }
+    // items sin capítulo (presupuestos migrados)
+    const orphans = lineItems.filter(i => !i.chapter_id || !chapters.find(c => c.id === i.chapter_id))
+    if (orphans.length > 0) {
+      rows.push(`
+    <tr style="background:#f3f4f6;">
+      <td colspan="5" style="padding:6px 8px;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Sin capítulo</td>
+    </tr>`)
+      rows.push(...orphans.map(renderItemRow))
+    }
+    itemRows = rows.join('')
+  } else {
+    itemRows = lineItems.map(renderItemRow).join('')
+  }
 
   const summaryRows = [
     `<tr><td style="padding:4px 10px;font-size:9.5pt;">Presupuesto de ejecución material</td><td style="padding:4px 10px;font-size:9.5pt;text-align:right;">${fmt(totals.subtotal)} €</td></tr>`,
@@ -145,13 +254,87 @@ function generateFallbackHtml(data: {
     </table>
   </div>
 
-  <!-- IBAN al pie si existe -->
-  ${company.iban ? `
-  <div style="border-top:1px solid #d1d5db;padding-top:6px;font-size:8.5pt;color:#6b7280;">
-    Forma de pago — Transferencia bancaria: <strong>${company.iban}</strong>
+  <!-- IBAN -->
+  ${show_iban && company.iban ? `
+  <div style="margin-top:6mm;padding-top:5px;border-top:1px solid #ddd;font-size:9.5pt;color:#666;">
+    Número de cuenta (IBAN): <strong>${company.iban}</strong>
   </div>` : ''}
+
+  <!-- Sección de firma -->
+  ${show_signature ? `
+  <div style="margin-top:10mm;display:flex;gap:16px;">
+    ${['Lugar y fecha:', 'Firma del cliente:', 'Firma y sello:'].map(label => `
+    <div style="flex:1;text-align:center;">
+      <div style="height:40px;"></div>
+      <div style="border-top:1px solid #1a1a1a;padding-top:5px;font-size:9.5pt;color:#666;">${label}</div>
+    </div>`).join('')}
+  </div>` : ''}
+
+  <!-- Pie de página -->
+  <div style="margin-top:8mm;padding-top:5px;border-top:1px solid #ddd;font-size:9pt;color:#999;text-align:center;">
+    ${[company.name, company.nif ? `NIF: ${company.nif}` : '', company.address, company.phone, company.email].filter(Boolean).join(' · ')}
+  </div>
 </body>
 </html>`
+}
+
+type LineItemData = {
+  chapter_id: string | null
+  description: string
+  unit: string
+  quantity: number
+  unit_price: number
+  total: number
+}
+
+async function expandDescriptions(
+  lineItems: LineItemData[],
+  anthropic: Anthropic,
+): Promise<LineItemData[]> {
+  if (lineItems.length === 0) return lineItems
+  try {
+    const input = lineItems.map(i => ({
+      descripcion: i.description,
+      unidad: i.unit,
+      cantidad: i.quantity,
+      precio_unitario: i.unit_price,
+      total: i.total,
+    }))
+
+    const response = await anthropic.messages.create({
+      model: MODEL_SONNET,
+      max_tokens: 4096,
+      system: [{ type: 'text', text: EXPAND_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+      messages: [{
+        role: 'user',
+        content: `Expande las descripciones de estas partidas manteniendo todos los valores numéricos exactos: ${JSON.stringify(input)}`,
+      }],
+    })
+
+    const usage = response.usage as Anthropic.Usage & {
+      cache_creation_input_tokens?: number
+      cache_read_input_tokens?: number
+    }
+    console.log('Expand descriptions tokens:', JSON.stringify({
+      input: usage.input_tokens,
+      output: usage.output_tokens,
+      cache_creation: usage.cache_creation_input_tokens ?? 0,
+      cache_read: usage.cache_read_input_tokens ?? 0,
+    }))
+
+    const raw = response.content[0]?.type === 'text' ? response.content[0].text : ''
+    const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
+    const expanded = JSON.parse(cleaned) as Array<{ descripcion: string }>
+
+    if (!Array.isArray(expanded) || expanded.length !== lineItems.length) return lineItems
+
+    return lineItems.map((item, i) => ({
+      ...item,
+      description: expanded[i]?.descripcion ?? item.description,
+    }))
+  } catch {
+    return lineItems // fallback seguro: usa descripciones originales
+  }
 }
 
 export async function POST(request: Request) {
@@ -163,15 +346,17 @@ export async function POST(request: Request) {
     const { budgetId } = await request.json()
     if (!budgetId) return NextResponse.json({ error: 'budgetId requerido' }, { status: 400 })
 
-    // Cargar presupuesto, partidas y perfil en paralelo
-    const [budgetRes, itemsRes, profileRes] = await Promise.all([
+    // Cargar presupuesto, partidas, capítulos y perfil en paralelo
+    const [budgetRes, itemsRes, chaptersRes, profileRes] = await Promise.all([
       supabase.from('budgets').select('*').eq('id', budgetId).eq('user_id', user.id).single(),
       supabase.from('line_items').select('*').eq('budget_id', budgetId).order('position'),
+      supabase.from('chapters').select('*').eq('budget_id', budgetId).order('position'),
       supabase.from('profiles').select('*').eq('id', user.id).single(),
     ])
 
     const b = budgetRes.data
     const items = itemsRes.data ?? []
+    const chapters = chaptersRes.data ?? []
     const p = profileRes.data
 
     if (!b) return NextResponse.json({ error: 'Presupuesto no encontrado' }, { status: 404 })
@@ -206,7 +391,15 @@ export async function POST(request: Request) {
         date: fmtDate(b.issued_date),
         validDays: b.valid_days ?? 30,
       },
+      show_iban: !!(b.show_iban && p?.iban),
+      show_signature: !!b.show_signature,
+      chapters: chapters.map(c => ({
+        id: c.id,
+        name: c.name,
+        position: c.position,
+      })),
       lineItems: items.map(i => ({
+        chapter_id: i.chapter_id ?? null,
         description: i.description,
         unit: i.unit ?? '',
         quantity: Number(i.quantity),
@@ -231,9 +424,18 @@ export async function POST(request: Request) {
       },
     }
 
-    // Sin plantilla → HTML de fallback, sin llamar a Claude
+    // Crear cliente Anthropic una vez para Sonnet y Opus
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+    // Paso 1: expandir descripciones con Sonnet (si está activado)
+    const expandedLineItems = b.expand_descriptions !== false
+      ? await expandDescriptions(budgetData.lineItems, anthropic)
+      : budgetData.lineItems
+    const finalBudgetData = { ...budgetData, lineItems: expandedLineItems }
+
+    // Sin plantilla → HTML de fallback, sin llamar a Opus
     if (!p?.template_url) {
-      return NextResponse.json({ html: generateFallbackHtml(budgetData) })
+      return NextResponse.json({ html: generateFallbackHtml(finalBudgetData) })
     }
 
     // Con plantilla → descargar y enviar a Claude
@@ -242,12 +444,12 @@ export async function POST(request: Request) {
       .createSignedUrl(p.template_url, 60)
 
     if (!signedData?.signedUrl) {
-      return NextResponse.json({ html: generateFallbackHtml(budgetData) })
+      return NextResponse.json({ html: generateFallbackHtml(finalBudgetData) })
     }
 
     const templateResponse = await fetch(signedData.signedUrl)
     if (!templateResponse.ok) {
-      return NextResponse.json({ html: generateFallbackHtml(budgetData) })
+      return NextResponse.json({ html: generateFallbackHtml(finalBudgetData) })
     }
 
     const buffer = await templateResponse.arrayBuffer()
@@ -271,8 +473,6 @@ export async function POST(request: Request) {
           },
         }
 
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
     const claudeResponse = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 8096,
@@ -283,7 +483,7 @@ export async function POST(request: Request) {
           templateBlock,
           {
             type: 'text',
-            text: `Genera el HTML del presupuesto con los siguientes datos:\n\n${JSON.stringify(budgetData, null, 2)}\n\nLa plantilla de referencia está adjunta. Imita su estructura exactamente y reemplaza todos los datos por los nuevos.`,
+            text: `Genera el presupuesto profesional en HTML completo siguiendo las instrucciones del sistema.\n\nDATOS DEL PRESUPUESTO:\n${JSON.stringify(finalBudgetData, null, 2)}\n\nLa imagen adjunta es la plantilla del usuario. Úsala como referencia de estructura y mejora su presentación visual.\n\nDevuelve SOLO el HTML desde <!DOCTYPE html> hasta </html>.`,
           },
         ],
       }],
