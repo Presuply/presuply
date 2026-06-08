@@ -14,10 +14,13 @@ import {
   useSensor,
   useSensors,
   closestCenter,
+  pointerWithin,
+  rectIntersection,
   useDroppable,
   type DragStartEvent,
   type DragEndEvent,
   type DraggableSyntheticListeners,
+  type CollisionDetection,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -360,6 +363,39 @@ export default function PresupuestoEditorPage() {
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
   )
 
+  const collisionDetectionStrategy: CollisionDetection = args => {
+    const activeIdStr = String(args.active.id)
+
+    if (activeIdStr.startsWith('chapter:')) {
+      return closestCenter(args).filter(c => {
+        const id = String(c.id)
+        return id.startsWith('chapter:') || id.startsWith('droppable_')
+      })
+    }
+
+    const pointerCollisions = pointerWithin(args)
+    const pointerItemCollisions = pointerCollisions.filter(c => {
+      const id = String(c.id)
+      return !id.startsWith('droppable_') && !id.startsWith('chapter:')
+    })
+    if (pointerItemCollisions.length > 0) return pointerItemCollisions
+
+    const pointerNonChapter = pointerCollisions.filter(c => !String(c.id).startsWith('chapter:'))
+    if (pointerNonChapter.length > 0) return pointerNonChapter
+
+    const rectCollisions = rectIntersection(args)
+    const rectItemCollisions = rectCollisions.filter(c => {
+      const id = String(c.id)
+      return !id.startsWith('droppable_') && !id.startsWith('chapter:')
+    })
+    if (rectItemCollisions.length > 0) return rectItemCollisions
+
+    const rectNonChapter = rectCollisions.filter(c => !String(c.id).startsWith('chapter:'))
+    if (rectNonChapter.length > 0) return rectNonChapter
+
+    return closestCenter(args)
+  }
+
   // ── Carga inicial ────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
@@ -631,7 +667,9 @@ export default function PresupuestoEditorPage() {
     if (activeItem.chapter_id === overItem.chapter_id) {
       // Reordenar dentro del mismo capítulo
       setLineItems(prev => {
-        const chVisible = prev.filter(i => i.chapter_id === activeItem.chapter_id && !i._deleted)
+        const chVisible = prev
+          .filter(i => i.chapter_id === activeItem.chapter_id && !i._deleted)
+          .sort((a, b) => a.position - b.position)
         const oldIdx = chVisible.findIndex(i => i.id === active.id)
         const newIdx = chVisible.findIndex(i => i.id === overId)
         if (oldIdx === -1 || newIdx === -1) return prev
@@ -840,7 +878,9 @@ export default function PresupuestoEditorPage() {
     // Partidas por capítulo
     const sortedChapters = visibleChapters
     for (const ch of sortedChapters) {
-      const chItems = visibleItems.filter(i => i.chapter_id === ch.id)
+      const chItems = visibleItems
+        .filter(i => i.chapter_id === ch.id)
+        .sort((a, b) => a.position - b.position)
       for (const item of chItems) {
         rows.push([
           ch.name,
@@ -911,7 +951,9 @@ export default function PresupuestoEditorPage() {
 
     // Partidas por capítulo
     for (const ch of visibleChapters) {
-      const chItems = visibleItems.filter(i => i.chapter_id === ch.id)
+      const chItems = visibleItems
+        .filter(i => i.chapter_id === ch.id)
+        .sort((a, b) => a.position - b.position)
       if (chItems.length === 0) continue
       const chRow = ws.addRow([ch.name, '', '', '', '', chItems.reduce((s, i) => s + i.total, 0)])
       chRow.font = { bold: true }
@@ -1136,7 +1178,7 @@ export default function PresupuestoEditorPage() {
         {/* Capítulos y partidas */}
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCenter}
+          collisionDetection={collisionDetectionStrategy}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
@@ -1146,7 +1188,9 @@ export default function PresupuestoEditorPage() {
               strategy={verticalListSortingStrategy}
             >
               {visibleChapters.map((chapter, chIdx) => {
-                const chItems = visibleItems.filter(i => i.chapter_id === chapter.id)
+                const chItems = visibleItems
+                  .filter(i => i.chapter_id === chapter.id)
+                  .sort((a, b) => a.position - b.position)
                 const chSubtotal = chItems.reduce((s, i) => s + i.total, 0)
                 return (
                   <SortableChapterSection
