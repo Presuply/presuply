@@ -275,35 +275,39 @@ function ChapterSection({
       </div>
 
       {/* Tabla */}
-      <div ref={setDropRef} className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[#D5DCE4] dark:border-[#3A4A5C] bg-[#F4F6F9] dark:bg-[#0D1B2A] text-left">
-              <th className="px-2 py-2 w-7" />
-              <th className="px-2 py-2 w-10 text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Nº</th>
-              <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Descripción</th>
-              <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] whitespace-nowrap">Ud.</th>
-              <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] text-right whitespace-nowrap">Cantidad</th>
-              <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] text-right whitespace-nowrap">P. Unit.</th>
-              <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] text-right whitespace-nowrap">Total</th>
-              <th className="px-2 py-2 w-8" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#D5DCE4] dark:divide-[#3A4A5C]">
-            <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
-              {items.map((item, itemIdx) => (
-                <SortableRow key={item.id} item={item} chIdx={chIdx} itemIdx={itemIdx} onUpdate={onUpdateItem} onDelete={onDeleteItem} />
-              ))}
-            </SortableContext>
-          </tbody>
-        </table>
-      </div>
-      <div className="px-4 py-3 border-t border-[#D5DCE4] dark:border-[#3A4A5C]">
-        <button type="button" onClick={() => onAddItem(chapter.id)}
-          className="text-sm font-semibold text-[#FF6A00] hover:text-[#FF9248] transition-colors">
-          + Añadir partida
-        </button>
-      </div>
+      {isOpen && (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#D5DCE4] dark:border-[#3A4A5C] bg-[#F4F6F9] dark:bg-[#0D1B2A] text-left">
+                  <th className="px-2 py-2 w-7" />
+                  <th className="px-2 py-2 w-10 text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Nº</th>
+                  <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Descripción</th>
+                  <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] whitespace-nowrap">Ud.</th>
+                  <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] text-right whitespace-nowrap">Cantidad</th>
+                  <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] text-right whitespace-nowrap">P. Unit.</th>
+                  <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] text-right whitespace-nowrap">Total</th>
+                  <th className="px-2 py-2 w-8" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#D5DCE4] dark:divide-[#3A4A5C]">
+                <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+                  {items.map((item, itemIdx) => (
+                    <SortableRow key={item.id} item={item} chIdx={chIdx} itemIdx={itemIdx} onUpdate={onUpdateItem} onDelete={onDeleteItem} />
+                  ))}
+                </SortableContext>
+              </tbody>
+            </table>
+          </div>
+          <div className="px-4 py-3 border-t border-[#D5DCE4] dark:border-[#3A4A5C]">
+            <button type="button" onClick={() => onAddItem(chapter.id)}
+              className="text-sm font-semibold text-[#FF6A00] hover:text-[#FF9248] transition-colors">
+              + Añadir partida
+            </button>
+          </div>
+        </>
+      )}
     </section>
   )
 }
