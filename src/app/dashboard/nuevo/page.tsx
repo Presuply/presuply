@@ -3,13 +3,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import Tooltip from '@/components/Tooltip'
+import { usePageTooltips } from '@/hooks/usePageTooltips'
 
 interface UploadedFile {
   id: string
   previewUrl: string
   storagePath: string
   fileName: string
+  isPdf: boolean
 }
+
+const PDF_MAX_BYTES = 10 * 1024 * 1024 // 10 MB
 
 export default function NuevoPresupuestoPage() {
   const router = useRouter()
@@ -52,6 +57,19 @@ export default function NuevoPresupuestoPage() {
     createDraft()
   }, [router])
 
+  async function convertIfHeic(file: File): Promise<File> {
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    const isHeic = ext === 'heic' || ext === 'heif' ||
+      file.type === 'image/heic' || file.type === 'image/heif'
+    if (!isHeic) return file
+
+    const { default: heic2any } = await import('heic2any')
+    const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 })
+    const blob = Array.isArray(converted) ? converted[0] : converted
+    const newName = file.name.replace(/\.(heic|heif)$/i, '.jpg')
+    return new File([blob], newName, { type: 'image/jpeg' })
+  }
+
   async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
     if (!files.length || !budgetId) return
@@ -63,7 +81,23 @@ export default function NuevoPresupuestoPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    for (const file of files) {
+    for (const original of files) {
+      const isPdf = original.type === 'application/pdf'
+
+      // Validar tamaño de PDFs
+      if (isPdf && original.size > PDF_MAX_BYTES) {
+        setError(`"${original.name}" supera el límite de 10 MB. Usa un PDF más pequeño.`)
+        continue
+      }
+
+      let file: File
+      try {
+        file = isPdf ? original : await convertIfHeic(original)
+      } catch {
+        setError(`No se pudo procesar "${original.name}". Inténtalo de nuevo.`)
+        continue
+      }
+
       const fileName = `${Date.now()}_${file.name}`
       const storagePath = `${user.id}/${budgetId}/${fileName}`
 
@@ -89,7 +123,7 @@ export default function NuevoPresupuestoPage() {
         .single()
 
       if (dbError || !uploadRow) {
-        setError(`Foto subida pero no registrada: "${file.name}".`)
+        setError(`Archivo subido pero no registrado: "${file.name}".`)
         continue
       }
 
@@ -97,9 +131,10 @@ export default function NuevoPresupuestoPage() {
         ...prev,
         {
           id: uploadRow.id,
-          previewUrl: URL.createObjectURL(file),
+          previewUrl: isPdf ? '' : URL.createObjectURL(file),
           storagePath,
           fileName: file.name,
+          isPdf,
         },
       ])
     }
@@ -113,7 +148,7 @@ export default function NuevoPresupuestoPage() {
     const supabase = createClient()
     await supabase.storage.from('uploads').remove([upload.storagePath])
     await supabase.from('uploads').delete().eq('id', upload.id)
-    URL.revokeObjectURL(upload.previewUrl)
+    if (upload.previewUrl) URL.revokeObjectURL(upload.previewUrl)
     setUploads((prev) => prev.filter((u) => u.id !== upload.id))
   }
 
@@ -136,7 +171,7 @@ export default function NuevoPresupuestoPage() {
       const data = await response.json()
 
       if (!response.ok) {
-        if (data.error === 'trial_exhausted') {
+        if (data.error === 'trial_exhausted' || data.error === 'monthly_limit') {
           router.push('/pricing')
           return
         }
@@ -152,6 +187,8 @@ export default function NuevoPresupuestoPage() {
   }
 
   const canGenerate = uploads.length > 0 || text.trim().length > 0
+  const { activeId: tooltipId, markSeen, skipAll: skipTour } =
+    usePageTooltips(['new_upload', 'new_ai'])
 
   if (!budgetId) {
     return (
@@ -173,30 +210,39 @@ export default function NuevoPresupuestoPage() {
 
       <div className="px-4 py-6 max-w-xl mx-auto space-y-6">
 
-        {/* Zona de fotos */}
+        {/* Zona de fotos y PDFs */}
         <section className="space-y-3">
           <label className="block text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9]">
-            Fotos de la obra o libreta
+            Fotos o PDFs de la obra
           </label>
 
-          <label
-            htmlFor="fotos"
-            className={`flex items-center justify-center w-full rounded-[12px] border-2 border-dashed px-4 py-6 text-sm font-semibold cursor-pointer transition-colors ${
-              uploading
-                ? 'border-[#D5DCE4] dark:border-[#3A4A5C] text-[#A9B5C2] cursor-not-allowed'
-                : 'border-[#D5DCE4] dark:border-[#3A4A5C] text-[#6B7B8C] hover:border-[#FF6A00] hover:text-[#FF6A00]'
-            }`}
-          >
-            {uploading ? (
-              <span className="italic text-[#A9B5C2]">Subiendo foto...</span>
-            ) : (
-              '+ Añadir fotos'
-            )}
-          </label>
+          <div className="relative">
+            <label
+              htmlFor="fotos"
+              className={`flex items-center justify-center w-full rounded-[12px] border-2 border-dashed px-4 py-6 text-sm font-semibold cursor-pointer transition-colors ${
+                uploading
+                  ? 'border-[#D5DCE4] dark:border-[#3A4A5C] text-[#A9B5C2] cursor-not-allowed'
+                  : 'border-[#D5DCE4] dark:border-[#3A4A5C] text-[#6B7B8C] hover:border-[#FF6A00] hover:text-[#FF6A00]'
+              }`}
+            >
+              {uploading ? (
+                <span className="italic text-[#A9B5C2]">Subiendo archivo...</span>
+              ) : (
+                '+ Añadir fotos o PDFs'
+              )}
+            </label>
+            <Tooltip
+              content="Sube una foto, WhatsApp o PDF con el trabajo a presupuestar"
+              placement="bottom"
+              isActive={tooltipId === 'new_upload'}
+              onDismiss={() => markSeen('new_upload')}
+              onSkipAll={skipTour}
+            />
+          </div>
           <input
             id="fotos"
             type="file"
-            accept="image/*"
+            accept="image/*,application/pdf"
             multiple
             disabled={uploading}
             onChange={handleFiles}
@@ -207,12 +253,23 @@ export default function NuevoPresupuestoPage() {
             <ul className="grid grid-cols-3 gap-2">
               {uploads.map((u) => (
                 <li key={u.id} className="relative aspect-square rounded-[12px] overflow-hidden bg-[#EDF0F4] dark:bg-[#3A4A5C]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={u.previewUrl}
-                    alt={u.fileName}
-                    className="w-full h-full object-cover"
-                  />
+                  {u.isPdf ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1 px-2">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#E5484D" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="8" y1="13" x2="16" y2="13" />
+                        <line x1="8" y1="17" x2="16" y2="17" />
+                        <line x1="10" y1="9" x2="14" y2="9" />
+                      </svg>
+                      <span className="text-[9px] text-[#6B7B8C] dark:text-[#A9B5C2] text-center leading-tight line-clamp-2 break-all">
+                        {u.fileName}
+                      </span>
+                    </div>
+                  ) : (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={u.previewUrl} alt={u.fileName} className="w-full h-full object-cover" />
+                  )}
                   <button
                     type="button"
                     onClick={() => handleDelete(u)}
@@ -248,14 +305,23 @@ export default function NuevoPresupuestoPage() {
           </p>
         )}
 
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={!canGenerate || uploading || extracting}
-          className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          {extracting ? 'Analizando con IA...' : 'Generar presupuesto'}
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={!canGenerate || uploading || extracting}
+            className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {extracting ? 'Analizando con IA...' : 'Generar presupuesto'}
+          </button>
+          <Tooltip
+            content="Claude extraerá las partidas automáticamente en segundos"
+            placement="top"
+            isActive={tooltipId === 'new_ai'}
+            onDismiss={() => markSeen('new_ai')}
+            onSkipAll={skipTour}
+          />
+        </div>
 
       </div>
     </main>

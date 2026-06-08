@@ -3,6 +3,7 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getPlanLimits, type PlanKey } from '@/lib/plans'
 
 const MODEL = 'claude-sonnet-4-6'
 
@@ -55,17 +56,24 @@ FORMATO DE RESPUESTA — devuelve exactamente esto, sin nada más:
 {
   "cliente_detectado": "nombre si aparece, null si no",
   "notas": "cualquier información relevante que no sea una partida",
-  "partidas": [
+  "capitulos": [
     {
-      "descripcion": "texto descriptivo de la partida",
-      "unidad": "m² | ml | ud | h | null",
-      "cantidad": 0.00,
-      "precio_unitario": 0.00,
-      "total": 0.00,
-      "confianza": "alta | media | baja"
+      "nombre": "1. DEMOLICIÓN",
+      "partidas": [
+        {
+          "descripcion": "texto descriptivo de la partida",
+          "unidad": "m² | ml | ud | h | null",
+          "cantidad": 0.00,
+          "precio_unitario": 0.00,
+          "total": 0.00,
+          "confianza": "alta | media | baja"
+        }
+      ]
     }
   ]
-}`
+}
+
+Si no detectas capítulos explícitos en el documento, agrupa todas las partidas en un único capítulo con nombre "General".`
 
 const USER_PROMPT =
   'Extrae todas las partidas de las siguientes imágenes de presupuesto. ' +
@@ -103,24 +111,53 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // 2. Verificar suscripción y límite de trial
+    // 2. Resolver cuenta: si es miembro de equipo, usar el perfil del owner
+    const { data: teamRow } = await supabase
+      .from('teams')
+      .select('owner_id')
+      .eq('member_id', user.id)
+      .maybeSingle()
+
+    const profileOwnerId = teamRow?.owner_id ?? user.id
+
     const { data: profile } = await supabase
       .from('profiles')
-      .select('subscription_status, budgets_used')
-      .eq('id', user.id)
+      .select('subscription_status, budgets_used, is_team, plan_key, budgets_this_month, month_reset_at')
+      .eq('id', profileOwnerId)
       .single()
 
-    const status = profile?.subscription_status ?? 'trial'
-    const used = profile?.budgets_used ?? 0
+    if (!profile?.is_team) {
+      const status = profile?.subscription_status ?? 'trial'
+      const planKey = (profile?.plan_key ?? 'trial') as PlanKey
 
-    if (status === 'canceled') {
-      return NextResponse.json({ error: 'subscription_canceled' }, { status: 403 })
-    }
-    if (status === 'past_due') {
-      return NextResponse.json({ error: 'payment_failed' }, { status: 403 })
-    }
-    if (status === 'trial' && used >= 3) {
-      return NextResponse.json({ error: 'trial_exhausted' }, { status: 403 })
+      if (status === 'canceled') {
+        return NextResponse.json({ error: 'subscription_canceled' }, { status: 403 })
+      }
+      if (status === 'past_due') {
+        return NextResponse.json({ error: 'payment_failed' }, { status: 403 })
+      }
+
+      // Trial: límite total de 3 presupuestos
+      if (planKey === 'trial' && (profile?.budgets_used ?? 0) >= 3) {
+        return NextResponse.json({ error: 'trial_exhausted' }, { status: 403 })
+      }
+
+      // Resetear contador mensual si el mes ha cambiado
+      const today = new Date().toISOString().slice(0, 10)
+      const resetAt = profile?.month_reset_at ?? today
+      if (resetAt < today) {
+        await supabase
+          .from('profiles')
+          .update({ budgets_this_month: 0, month_reset_at: today })
+          .eq('id', user.id)
+        if (profile) profile.budgets_this_month = 0
+      }
+
+      // Límite mensual según plan
+      const limits = getPlanLimits(planKey, false)
+      if (limits.budgetsPerMonth !== null && (profile?.budgets_this_month ?? 0) >= limits.budgetsPerMonth) {
+        return NextResponse.json({ error: 'monthly_limit' }, { status: 403 })
+      }
     }
 
     // 3. Parsear body
@@ -144,8 +181,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // 3. Descargar imágenes de Storage y convertir a base64
-    const imageBlocks: Anthropic.ImageBlockParam[] = []
+    // 3. Descargar archivos de Storage y construir bloques de contenido
+    const contentBlocks: Anthropic.ContentBlockParam[] = []
 
     for (const path of uploadPaths) {
       const { data: signedData } = await supabase.storage
@@ -154,24 +191,37 @@ export async function POST(request: Request) {
 
       if (!signedData?.signedUrl) continue
 
-      const imageResponse = await fetch(signedData.signedUrl)
-      if (!imageResponse.ok) continue
+      const fileResponse = await fetch(signedData.signedUrl)
+      if (!fileResponse.ok) continue
 
-      const buffer = await imageResponse.arrayBuffer()
+      const buffer = await fileResponse.arrayBuffer()
+      const contentType = fileResponse.headers.get('content-type') ?? ''
+      const isPdf = contentType.includes('application/pdf') || path.toLowerCase().endsWith('.pdf')
 
-      imageBlocks.push({
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: toValidMediaType(imageResponse.headers.get('content-type')),
-          data: arrayBufferToBase64(buffer),
-        },
-      })
+      if (isPdf) {
+        contentBlocks.push({
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: arrayBufferToBase64(buffer),
+          },
+        } as unknown as Anthropic.ContentBlockParam)
+      } else {
+        contentBlocks.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: toValidMediaType(contentType),
+            data: arrayBufferToBase64(buffer),
+          },
+        })
+      }
     }
 
-    if (imageBlocks.length === 0 && !text) {
+    if (contentBlocks.length === 0 && !text) {
       return NextResponse.json(
-        { error: 'No se pudieron descargar las imágenes y no hay texto' },
+        { error: 'No se pudieron descargar los archivos y no hay texto' },
         { status: 422 }
       )
     }
@@ -180,7 +230,7 @@ export async function POST(request: Request) {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     const userContent: Anthropic.ContentBlockParam[] = [
-      ...imageBlocks,
+      ...contentBlocks,
       {
         type: 'text',
         text: text ? `${USER_PROMPT}\n\nTexto adicional del profesional:\n${text}` : USER_PROMPT,
@@ -232,27 +282,59 @@ export async function POST(request: Request) {
       )
     }
 
-    // 7. Guardar partidas en line_items y actualizar el budget
+    // 7. Guardar capítulos y partidas en Supabase
+    type RawPartida = {
+      descripcion: string
+      unidad: string | null
+      cantidad: number
+      precio_unitario: number
+      total: number
+      confianza: string
+    }
+    type RawCapitulo = { nombre: string; partidas: RawPartida[] }
+
     const extracted = parsed as {
       cliente_detectado?: string | null
       notas?: string | null
-      partidas?: Array<{
-        descripcion: string
-        unidad: string | null
-        cantidad: number
-        precio_unitario: number
-        total: number
-        confianza: string
-      }>
+      capitulos?: RawCapitulo[]
     }
 
-    const partidas = Array.isArray(extracted.partidas) ? extracted.partidas : []
+    // Normalizar: si Claude devolviera estructura antigua con "partidas" planas, envolverlas
+    let capitulos: RawCapitulo[] = Array.isArray(extracted.capitulos)
+      ? extracted.capitulos
+      : []
+    if (capitulos.length === 0) {
+      const legacy = (parsed as { partidas?: RawPartida[] }).partidas
+      if (Array.isArray(legacy) && legacy.length > 0) {
+        capitulos = [{ nombre: 'General', partidas: legacy }]
+      }
+    }
 
-    if (partidas.length > 0) {
-      await supabase.from('line_items').insert(
-        partidas.map((p, index) => ({
+    for (let ci = 0; ci < capitulos.length; ci++) {
+      const cap = capitulos[ci]
+      const partidas = Array.isArray(cap.partidas) ? cap.partidas : []
+      if (partidas.length === 0) continue
+
+      // Crear capítulo
+      const { data: chapterRow } = await supabase
+        .from('chapters')
+        .insert({
           budget_id: budgetId,
           user_id: user.id,
+          name: cap.nombre ?? `Capítulo ${ci + 1}`,
+          position: ci,
+        })
+        .select('id')
+        .single()
+
+      if (!chapterRow) continue
+
+      // Insertar partidas del capítulo
+      await supabase.from('line_items').insert(
+        partidas.map((p, pi) => ({
+          budget_id: budgetId,
+          user_id: user.id,
+          chapter_id: chapterRow.id,
           description: p.descripcion ?? '',
           unit: p.unidad ?? null,
           quantity: Number(p.cantidad) || 0,
@@ -261,7 +343,7 @@ export async function POST(request: Request) {
           confidence: (['alta', 'media', 'baja'].includes(p.confianza)
             ? p.confianza
             : null) as 'alta' | 'media' | 'baja' | null,
-          position: index,
+          position: pi,
         }))
       )
     }
@@ -274,11 +356,16 @@ export async function POST(request: Request) {
         .eq('user_id', user.id)
     }
 
-    // Incrementar contador de presupuestos usados
-    await supabase
-      .from('profiles')
-      .update({ budgets_used: used + 1 })
-      .eq('id', user.id)
+    // Incrementar contadores en el perfil del owner (no aplica a is_team)
+    if (!profile?.is_team) {
+      await supabase
+        .from('profiles')
+        .update({
+          budgets_used: (profile?.budgets_used ?? 0) + 1,
+          budgets_this_month: (profile?.budgets_this_month ?? 0) + 1,
+        })
+        .eq('id', profileOwnerId)
+    }
 
     return NextResponse.json(parsed)
 

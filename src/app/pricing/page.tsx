@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Footer from '@/components/Footer'
 
 const PLANS = [
   {
@@ -11,12 +12,16 @@ const PLANS = [
     monthly: 49,
     annual: 39,
     features: [
-      'Presupuestos ilimitados',
-      'Extracción con IA desde foto',
-      'PDF profesional descargable',
-      'Plantilla personalizada',
       '1 usuario',
-      'Soporte por email',
+      'Hasta 20 presupuestos al mes',
+      'Generación desde foto, PDF o texto de WhatsApp',
+      'Extracción de partidas con IA',
+      'Capítulos en el presupuesto',
+      'Editor con recálculo automático',
+      'Expansión de descripciones con IA',
+      'PDF profesional descargable',
+      'IGIC / IVA configurable',
+      'Plantilla con tu logo y datos',
     ],
   },
   {
@@ -26,10 +31,10 @@ const PLANS = [
     annual: 79,
     highlight: true,
     features: [
-      'Todo lo de Autónomo',
-      'Gastos generales y beneficio industrial',
-      'Extracción de varias fotos a la vez',
-      'Historial completo de presupuestos',
+      'Hasta 3 usuarios',
+      'Hasta 50 presupuestos al mes',
+      'Todo lo de Autónomo, más:',
+      'Carpetas para organizar presupuestos',
       'Soporte prioritario',
     ],
   },
@@ -39,11 +44,12 @@ const PLANS = [
     monthly: 249,
     annual: 199,
     features: [
-      'Todo lo de Profesional',
-      'Múltiples empresas',
-      'Estadísticas y métricas',
-      'Integración API (próximamente)',
-      'Soporte premium',
+      'Usuarios ilimitados',
+      'Presupuestos ilimitados',
+      'Todo lo de Profesional, más:',
+      'Panel de administrador (próximamente)',
+      'Integraciones / API (próximamente)',
+      'Gestor de cuenta dedicado',
     ],
   },
 ] as const
@@ -103,7 +109,7 @@ export default function PricingPage() {
             <img src="/images/logo.svg" alt="Presuply" className="h-10 w-auto" />
           </div>
           <h1 className="text-3xl font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">Elige tu plan</h1>
-          <p className="text-[#6B7B8C] dark:text-[#A9B5C2]">90 días de prueba gratuita. Cancela cuando quieras.</p>
+          <p className="text-[#6B7B8C] dark:text-[#A9B5C2]">3 presupuestos gratis. Cancela cuando quieras.</p>
         </div>
 
         {/* Toggle mensual / anual */}
@@ -206,10 +212,13 @@ export default function PricingPage() {
         )}
 
         <p className="text-center text-xs text-[#A9B5C2]">
-          Al continuar aceptas nuestros términos de servicio. Cancela en cualquier momento desde tu panel de suscripción.
+          Al continuar aceptas nuestros{' '}
+          <Link href="/terminos" className="hover:text-[#FF6A00] underline transition-colors">términos de servicio</Link>.
+          Cancela en cualquier momento desde tu panel de suscripción.
         </p>
 
       </div>
+      <Footer />
     </main>
   )
 }
