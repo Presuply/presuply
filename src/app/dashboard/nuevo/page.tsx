@@ -70,6 +70,18 @@ export default function NuevoPresupuestoPage() {
     return new File([blob], newName, { type: 'image/jpeg' })
   }
 
+  function sanitizeFileName(name: string): string {
+    const dotIdx = name.lastIndexOf('.')
+    const ext = dotIdx !== -1 ? name.slice(dotIdx).toLowerCase() : ''
+    const base = dotIdx !== -1 ? name.slice(0, dotIdx) : name
+    const safe = base
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')  // eliminar diacríticos: á→a, é→e, ñ→n
+      .replace(/\s+/g, '_')
+      .replace(/[^a-zA-Z0-9._-]/g, '')
+    return (safe || 'archivo') + ext
+  }
+
   async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
     if (!files.length || !budgetId) return
@@ -84,9 +96,9 @@ export default function NuevoPresupuestoPage() {
     for (const original of files) {
       const isPdf = original.type === 'application/pdf'
 
-      // Validar tamaño de PDFs
-      if (isPdf && original.size > PDF_MAX_BYTES) {
-        setError(`"${original.name}" supera el límite de 10 MB. Usa un PDF más pequeño.`)
+      // Validar tamaño — aplica a todos los archivos
+      if (original.size > PDF_MAX_BYTES) {
+        setError('El archivo es demasiado grande. El tamaño máximo es 10 MB.')
         continue
       }
 
@@ -98,15 +110,23 @@ export default function NuevoPresupuestoPage() {
         continue
       }
 
-      const fileName = `${Date.now()}_${file.name}`
-      const storagePath = `${user.id}/${budgetId}/${fileName}`
+      const safeFileName = `${Date.now()}_${sanitizeFileName(file.name)}`
+      const storagePath = `${user.id}/${budgetId}/${safeFileName}`
 
       const { error: storageError } = await supabase.storage
         .from('uploads')
         .upload(storagePath, file)
 
       if (storageError) {
-        setError(`No se pudo subir "${file.name}". Inténtalo de nuevo.`)
+        const status = (storageError as { status?: number; statusCode?: number }).status
+          ?? (storageError as { status?: number; statusCode?: number }).statusCode
+        console.error('Supabase Storage upload error:', storageError.message, status)
+
+        const isBucketError = status === 404 ||
+          storageError.message.toLowerCase().includes('bucket')
+        setError(isBucketError
+          ? 'Error de configuración del almacenamiento. Contacta con soporte.'
+          : `No se pudo subir "${original.name}". Inténtalo de nuevo.`)
         continue
       }
 
