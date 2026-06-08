@@ -1,85 +1,17 @@
 export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 import { renderToStream } from '@react-pdf/renderer'
 import { createClient } from '@/lib/supabase/server'
 import PresupuestoPDF from '@/components/PresupuestoPDF'
 import type { PDFLineItem, PDFChapter, PDFTotals } from '@/components/PresupuestoPDF'
 import React from 'react'
 
-// ── Expand descriptions (same logic as generate-pdf-html) ─────────────────
-
-const EXPAND_SYSTEM_PROMPT = `Eres un experto en construcción y reformas en España. Recibes una lista de partidas de presupuesto con descripciones cortas escritas por un profesional.
-Tu tarea es expandir cada descripción a texto técnico profesional completo, como aparecería en un presupuesto formal de construcción.
-
-REGLAS ESTRICTAS:
-- Mantén EXACTAMENTE la cantidad, unidad y precio del original — nunca los cambies
-- Solo expande el campo 'descripcion'
-- La descripción expandida debe incluir: tipo de material, marca si se puede inferir, especificaciones técnicas, método de colocación, incluyendo medios auxiliares
-- Si la descripción ya es técnica y completa, devuélvela tal cual sin cambios
-- Si no puedes inferir especificaciones, expande con términos genéricos profesionales del sector
-- Devuelve SOLO JSON válido, sin texto adicional
-
-Formato de respuesta — array JSON con las mismas partidas pero con descripciones expandidas:
-[{ "descripcion": "...", "unidad": "...", "cantidad": 0, "precio_unitario": 0, "total": 0 }]`
-
-type LineItemData = {
-  chapter_id: string | null
-  description: string
-  unit: string
-  quantity: number
-  unit_price: number
-  total: number
-}
-
-async function expandDescriptions(
-  lineItems: LineItemData[],
-  anthropic: Anthropic,
-): Promise<LineItemData[]> {
-  if (lineItems.length === 0) return lineItems
-  try {
-    const input = lineItems.map(i => ({
-      descripcion: i.description,
-      unidad: i.unit,
-      cantidad: i.quantity,
-      precio_unitario: i.unit_price,
-      total: i.total,
-    }))
-
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      system: [{ type: 'text', text: EXPAND_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      messages: [{
-        role: 'user',
-        content: `Expande las descripciones de estas partidas manteniendo todos los valores numéricos exactos: ${JSON.stringify(input)}`,
-      }],
-    })
-
-    const raw = response.content[0]?.type === 'text' ? response.content[0].text : ''
-    const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
-    const expanded = JSON.parse(cleaned) as Array<{ descripcion: string }>
-
-    if (!Array.isArray(expanded) || expanded.length !== lineItems.length) return lineItems
-    return lineItems.map((item, i) => ({
-      ...item,
-      description: expanded[i]?.descripcion ?? item.description,
-    }))
-  } catch {
-    return lineItems
-  }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-
 function fmtDate(iso: string): string {
   if (!iso) return ''
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
 }
-
-// ── Route handler ─────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
   try {
@@ -115,21 +47,6 @@ export async function GET(request: Request) {
     const taxAmount = baseImponible * (Number(b.tax_rate) / 100)
     const total = baseImponible + taxAmount
 
-    const lineItemsData: LineItemData[] = items.map(i => ({
-      chapter_id: i.chapter_id ?? null,
-      description: i.description,
-      unit: i.unit ?? '',
-      quantity: Number(i.quantity),
-      unit_price: Number(i.unit_price),
-      total: Number(i.total),
-    }))
-
-    // Expandir descripciones con Sonnet si está activado
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-    const finalLineItems = b.expand_descriptions !== false
-      ? await expandDescriptions(lineItemsData, anthropic)
-      : lineItemsData
-
     // Obtener logo como base64 (más fiable que URL directa en renderToStream)
     let signedLogoUrl: string | null = null
     if (p?.logo_url) {
@@ -152,7 +69,6 @@ export async function GET(request: Request) {
       }
     }
 
-    // Props para el componente PDF
     const pdfProps = {
       company: {
         name: p?.company_name || p?.full_name || '',
@@ -176,14 +92,16 @@ export async function GET(request: Request) {
         title: (b as { title?: string | null }).title ?? null,
       },
       chapters: (chapters as PDFChapter[]),
-      lineItems: finalLineItems.map((item, idx) => ({
-        id: items[idx]?.id ?? String(idx),
-        chapter_id: item.chapter_id,
-        description: item.description,
-        unit: item.unit,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        total: item.total,
+      lineItems: items.map(i => ({
+        id: i.id,
+        chapter_id: i.chapter_id ?? null,
+        description: i.description,
+        unit: i.unit ?? '',
+        quantity: Number(i.quantity),
+        unit_price: Number(i.unit_price),
+        total: Number(i.total),
+        descripcion_extendida: (i as { descripcion_extendida?: string | null }).descripcion_extendida ?? null,
+        titulo_partida: (i as { titulo_partida?: string | null }).titulo_partida ?? null,
       })) as PDFLineItem[],
       totals: {
         subtotal,
@@ -206,23 +124,19 @@ export async function GET(request: Request) {
       signedLogoUrl,
     }
 
-    // Generar PDF con react-pdf
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stream = await renderToStream(React.createElement(PresupuestoPDF, pdfProps) as any)
 
-    // Recoger chunks del stream Node.js
     const chunks: Buffer[] = []
     for await (const chunk of stream) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
     }
     const pdfBuffer = Buffer.concat(chunks)
 
-    const filename = `presupuesto-${b.budget_number}.pdf`
-
     return new NextResponse(pdfBuffer, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Disposition': `attachment; filename="presupuesto-${b.budget_number}.pdf"`,
         'Content-Length': String(pdfBuffer.length),
       },
     })

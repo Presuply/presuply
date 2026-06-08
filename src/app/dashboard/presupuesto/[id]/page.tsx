@@ -50,8 +50,18 @@ interface EditableLineItem {
   total: number
   confidence: Confidence | null
   position: number
+  descripcion_extendida: string | null
+  titulo_partida: string | null
   _isNew: boolean
   _deleted: boolean
+}
+
+interface ExtendedDescEdit {
+  itemId: string
+  titulo: string
+  descripcion: string
+  saving: boolean
+  regenerating: boolean
 }
 
 interface BudgetHeader {
@@ -102,12 +112,14 @@ function SortableRow({
   itemIdx,
   onUpdate,
   onDelete,
+  onEditExtended,
 }: {
   item: EditableLineItem
   chIdx: number
   itemIdx: number
   onUpdate: (id: string, field: keyof EditableLineItem, value: string | number | null) => void
   onDelete: (id: string) => void
+  onEditExtended: (itemId: string) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id })
@@ -160,10 +172,22 @@ function SortableRow({
         {fmt(item.total)} €
       </td>
       <td className="px-2 py-2">
-        <button type="button" onClick={() => onDelete(item.id)} aria-label="Eliminar partida"
-          className="flex items-center justify-center w-6 h-6 rounded-full text-[#A9B5C2] hover:text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-          ✕
-        </button>
+        <div className="flex items-center gap-0.5">
+          {item.descripcion_extendida && (
+            <button
+              type="button"
+              onClick={() => onEditExtended(item.id)}
+              aria-label="Editar descripción extendida"
+              className="flex items-center justify-center w-6 h-6 rounded-full text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors text-xs"
+            >
+              ✎
+            </button>
+          )}
+          <button type="button" onClick={() => onDelete(item.id)} aria-label="Eliminar partida"
+            className="flex items-center justify-center w-6 h-6 rounded-full text-[#A9B5C2] hover:text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+            ✕
+          </button>
+        </div>
       </td>
     </tr>
   )
@@ -186,6 +210,7 @@ function ChapterSection({
   onAddItem,
   onUpdateItem,
   onDeleteItem,
+  onEditExtended,
   dragListeners,
 }: {
   chapter: EditableChapter
@@ -202,6 +227,7 @@ function ChapterSection({
   onAddItem: (chapterId: string) => void
   onUpdateItem: (id: string, field: keyof EditableLineItem, value: string | number | null) => void
   onDeleteItem: (id: string) => void
+  onEditExtended: (itemId: string) => void
   dragListeners?: DraggableSyntheticListeners
 }) {
   const { setNodeRef: setDropRef } = useDroppable({ id: `droppable_${chapter.id}` })
@@ -294,7 +320,7 @@ function ChapterSection({
               <tbody className="divide-y divide-[#D5DCE4] dark:divide-[#3A4A5C]">
                 <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
                   {items.map((item, itemIdx) => (
-                    <SortableRow key={item.id} item={item} chIdx={chIdx} itemIdx={itemIdx} onUpdate={onUpdateItem} onDelete={onDeleteItem} />
+                    <SortableRow key={item.id} item={item} chIdx={chIdx} itemIdx={itemIdx} onUpdate={onUpdateItem} onDelete={onDeleteItem} onEditExtended={onEditExtended} />
                   ))}
                 </SortableContext>
               </tbody>
@@ -327,6 +353,7 @@ function SortableChapterSection(props: {
   onAddItem: (chapterId: string) => void
   onUpdateItem: (id: string, field: keyof EditableLineItem, value: string | number | null) => void
   onDeleteItem: (id: string) => void
+  onEditExtended: (itemId: string) => void
 }) {
   const { chapter } = props
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -372,6 +399,8 @@ export default function PresupuestoEditorPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [generatingPdf, setGeneratingPdf] = useState(false)
+  const [generatingBudget, setGeneratingBudget] = useState(false)
+  const [extendedEdit, setExtendedEdit] = useState<ExtendedDescEdit | null>(null)
   const [chapters, setChapters] = useState<EditableChapter[]>([])
   const [lineItems, setLineItems] = useState<EditableLineItem[]>([])
   const [profileIban, setProfileIban] = useState<string | null>(null)
@@ -488,7 +517,10 @@ export default function PresupuestoEditorPage() {
             id: item.id, chapter_id: newChapter.id, description: item.description,
             unit: item.unit ?? '', quantity: Number(item.quantity),
             unit_price: Number(item.unit_price), total: Number(item.total),
-            confidence: item.confidence, position: item.position, _isNew: false, _deleted: false,
+            confidence: item.confidence, position: item.position,
+            descripcion_extendida: item.descripcion_extendida ?? null,
+            titulo_partida: item.titulo_partida ?? null,
+            _isNew: false, _deleted: false,
           })))
         }
       } else {
@@ -499,7 +531,10 @@ export default function PresupuestoEditorPage() {
           id: item.id, chapter_id: item.chapter_id ?? null, description: item.description,
           unit: item.unit ?? '', quantity: Number(item.quantity),
           unit_price: Number(item.unit_price), total: Number(item.total),
-          confidence: item.confidence, position: item.position, _isNew: false, _deleted: false,
+          confidence: item.confidence, position: item.position,
+          descripcion_extendida: item.descripcion_extendida ?? null,
+          titulo_partida: item.titulo_partida ?? null,
+          _isNew: false, _deleted: false,
         })))
       }
 
@@ -548,6 +583,7 @@ export default function PresupuestoEditorPage() {
     setLineItems(prev => [...prev, {
       id: `new-${Date.now()}`, chapter_id: chapterId, description: '', unit: '',
       quantity: 1, unit_price: 0, total: 0, confidence: null,
+      descripcion_extendida: null, titulo_partida: null,
       position: maxPos + 1, _isNew: true, _deleted: false,
     }])
     markDirty()
@@ -1064,6 +1100,94 @@ export default function PresupuestoEditorPage() {
     URL.revokeObjectURL(objectUrl)
   }
 
+  // ── Generar presupuesto (expandir descripciones) ──────────────────────────
+  async function handleGenerateBudget() {
+    setGeneratingBudget(true)
+    setSaveError(null)
+    try {
+      const items = visibleItems.map(i => ({ id: i.id, description: i.description }))
+      const res = await fetch('/api/expand-descriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budgetId: id, items }),
+      })
+      if (!res.ok) throw new Error('Error al generar el presupuesto')
+      const { items: expanded } = await res.json() as {
+        items: Array<{ id: string; titulo_partida: string; descripcion_extendida: string }>
+      }
+      setLineItems(prev => prev.map(item => {
+        const exp = expanded.find(e => e.id === item.id)
+        if (!exp) return item
+        return { ...item, titulo_partida: exp.titulo_partida || null, descripcion_extendida: exp.descripcion_extendida || null }
+      }))
+    } catch (err) {
+      console.error('Error generando presupuesto:', err)
+      setSaveError('No se pudo generar el presupuesto. Inténtalo de nuevo.')
+    } finally {
+      setGeneratingBudget(false)
+    }
+  }
+
+  // ── Edición de descripción extendida ──────────────────────────────────────
+  function openExtendedEdit(itemId: string) {
+    const item = lineItems.find(i => i.id === itemId)
+    if (!item) return
+    setExtendedEdit({
+      itemId,
+      titulo: item.titulo_partida ?? '',
+      descripcion: item.descripcion_extendida ?? '',
+      saving: false,
+      regenerating: false,
+    })
+  }
+
+  async function handleSaveExtended() {
+    if (!extendedEdit) return
+    setExtendedEdit(prev => prev ? { ...prev, saving: true } : null)
+    const supabase = createClient()
+    await supabase.from('line_items').update({
+      titulo_partida: extendedEdit.titulo || null,
+      descripcion_extendida: extendedEdit.descripcion || null,
+    }).eq('id', extendedEdit.itemId)
+    setLineItems(prev => prev.map(item =>
+      item.id === extendedEdit.itemId
+        ? { ...item, titulo_partida: extendedEdit.titulo || null, descripcion_extendida: extendedEdit.descripcion || null }
+        : item
+    ))
+    setExtendedEdit(null)
+  }
+
+  async function handleRegenerateExtended() {
+    if (!extendedEdit) return
+    const item = lineItems.find(i => i.id === extendedEdit.itemId)
+    if (!item) return
+    setExtendedEdit(prev => prev ? { ...prev, regenerating: true } : null)
+    try {
+      const res = await fetch('/api/expand-descriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budgetId: id, items: [{ id: item.id, description: item.description }] }),
+      })
+      if (res.ok) {
+        const { items: expanded } = await res.json() as {
+          items: Array<{ id: string; titulo_partida: string; descripcion_extendida: string }>
+        }
+        const exp = expanded[0]
+        if (exp) {
+          setExtendedEdit(prev => prev ? {
+            ...prev,
+            titulo: exp.titulo_partida ?? prev.titulo,
+            descripcion: exp.descripcion_extendida ?? prev.descripcion,
+          } : null)
+        }
+      }
+    } catch {
+      // Error silencioso en el modal
+    } finally {
+      setExtendedEdit(prev => prev ? { ...prev, regenerating: false } : null)
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -1080,6 +1204,7 @@ export default function PresupuestoEditorPage() {
   const visibleChapters = chapters.filter(c => !c._deleted).sort((a, b) => a.position - b.position)
   const activeItem = activeId ? lineItems.find(i => i.id === activeId) : null
   const allChaptersCollapsed = visibleChapters.length > 0 && visibleChapters.every(ch => collapsedChapterIds.has(ch.id))
+  const hasExtendedDescriptions = visibleItems.some(i => i.descripcion_extendida)
 
   return (
     <main
@@ -1098,15 +1223,10 @@ export default function PresupuestoEditorPage() {
           {dirty && <span className="text-xs text-[#A9B5C2] shrink-0">Sin guardar</span>}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button type="button" onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
-            disabled={generatingPdf}
-            className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors">
-            {generatingPdf ? 'Generando...' : pdfUrl ? 'Descargar PDF' : 'PDF'}
-          </button>
           <div className="relative">
             <button type="button" onClick={handleSave} disabled={saving}
-              className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2 text-sm disabled:opacity-40 transition-colors">
-              {saving ? 'Guardando...' : 'Guardar'}
+              className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors">
+              {saving ? 'Guardando...' : 'Guardar borrador'}
             </button>
             <Tooltip
               content="Tus cambios se guardan solos cada 30 segundos"
@@ -1116,6 +1236,15 @@ export default function PresupuestoEditorPage() {
               onSkipAll={skipTour}
             />
           </div>
+          <button type="button" onClick={handleGenerateBudget} disabled={generatingBudget}
+            className="border border-[#FF6A00] text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/10 rounded-[8px] px-3 py-2 text-sm font-semibold disabled:opacity-40 transition-colors">
+            {generatingBudget ? 'Generando...' : '✨ Generar presupuesto'}
+          </button>
+          <button type="button" onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
+            disabled={generatingPdf}
+            className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-3 py-2 text-sm disabled:opacity-40 transition-colors">
+            {generatingPdf ? 'Generando PDF...' : pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
+          </button>
         </div>
       </div>
 
@@ -1160,30 +1289,6 @@ export default function PresupuestoEditorPage() {
                     placeholder="Ej. 26/001" className={inputClass} />
                 </div>
               </div>
-              <label className="flex items-start gap-3 cursor-pointer select-none pt-1">
-                <div className="relative mt-0.5 shrink-0" onClick={e => e.preventDefault()}>
-                  <input type="checkbox" checked={budget.expand_descriptions}
-                    onChange={e => updateBudgetField('expand_descriptions', e.target.checked)}
-                    className="sr-only" />
-                  <div
-                    onClick={() => updateBudgetField('expand_descriptions', !budget.expand_descriptions)}
-                    className={`w-10 h-6 rounded-full transition-colors cursor-pointer ${budget.expand_descriptions ? 'bg-[#FF6A00]' : 'bg-[#D5DCE4] dark:bg-[#3A4A5C]'}`}
-                  />
-                  <div
-                    onClick={() => updateBudgetField('expand_descriptions', !budget.expand_descriptions)}
-                    className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform cursor-pointer ${budget.expand_descriptions ? 'translate-x-5' : 'translate-x-1'}`}
-                  />
-                </div>
-                <div>
-                  <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">Mejorar descripciones en el PDF</span>
-                  <p className="text-xs text-[#A9B5C2] mt-0.5">
-                    {budget.expand_descriptions
-                      ? 'Las descripciones se expandirán a texto técnico profesional al generar el PDF'
-                      : 'El PDF mostrará exactamente lo que has escrito'}
-                  </p>
-                </div>
-              </label>
-
               <div className="flex flex-wrap gap-x-6 gap-y-3 pt-1">
                 {profileIban && (
                   <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -1313,6 +1418,7 @@ export default function PresupuestoEditorPage() {
                     onAddItem={addItem}
                     onUpdateItem={updateItem}
                     onDeleteItem={deleteItem}
+                    onEditExtended={openExtendedEdit}
                   />
                 )
               })}
@@ -1449,16 +1555,25 @@ export default function PresupuestoEditorPage() {
         )}
 
         {/* Botones móvil */}
-        <div className="flex flex-col sm:flex-row gap-3 pb-8">
+        <div className="flex flex-col gap-3 pb-4">
           <button type="button" onClick={handleSave} disabled={saving}
-            className="flex-1 bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
+            className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
             {saving ? 'Guardando...' : 'Guardar borrador'}
+          </button>
+          <button type="button" onClick={handleGenerateBudget} disabled={generatingBudget}
+            className="w-full border-2 border-[#FF6A00] text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/10 font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
+            {generatingBudget ? 'Generando presupuesto...' : '✨ Generar presupuesto'}
           </button>
           <button type="button" onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
             disabled={generatingPdf}
-            className="flex-1 bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#D5DCE4] dark:hover:bg-[#4A5A6C] font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
+            className="w-full bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#D5DCE4] dark:hover:bg-[#4A5A6C] font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
             {generatingPdf ? 'Generando PDF...' : pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
           </button>
+          {!hasExtendedDescriptions && (
+            <p className="text-xs text-[#A9B5C2] text-center">
+              Genera el presupuesto primero para obtener descripciones profesionales
+            </p>
+          )}
         </div>
         <div className="relative flex gap-3 pb-8">
           <button type="button" onClick={handleExportCSV}
@@ -1510,6 +1625,75 @@ export default function PresupuestoEditorPage() {
                 className="w-full text-[#6B7B8C] text-sm py-2 hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] transition-colors">
                 Cancelar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: editar descripción extendida */}
+      {extendedEdit && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white dark:bg-[#1B2A3A] rounded-[12px] p-6 max-w-lg w-full space-y-4 shadow-xl">
+            <h3 className="font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">Editar descripción extendida</h3>
+
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">
+                  Título de la partida
+                </label>
+                <span className={`text-xs ${extendedEdit.titulo.length > 50 ? 'text-[#F5A623]' : 'text-[#A9B5C2]'}`}>
+                  {extendedEdit.titulo.length}/60
+                </span>
+              </div>
+              <input
+                type="text"
+                maxLength={60}
+                value={extendedEdit.titulo}
+                onChange={e => setExtendedEdit(prev => prev ? { ...prev, titulo: e.target.value } : null)}
+                placeholder="Título corto de la partida"
+                className={inputClass}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">
+                Descripción extendida
+              </label>
+              <textarea
+                rows={5}
+                value={extendedEdit.descripcion}
+                onChange={e => setExtendedEdit(prev => prev ? { ...prev, descripcion: e.target.value } : null)}
+                placeholder="Descripción técnica y profesional de la partida..."
+                className={`${inputClass} resize-y`}
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleRegenerateExtended}
+                disabled={extendedEdit.regenerating}
+                className="w-full border border-[#FF6A00] text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/20 font-semibold rounded-[8px] px-4 py-2.5 text-sm disabled:opacity-40 transition-colors"
+              >
+                {extendedEdit.regenerating ? 'Regenerando...' : '✨ Regenerar con IA'}
+              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveExtended}
+                  disabled={extendedEdit.saving}
+                  className="flex-1 bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm disabled:opacity-40 transition-colors"
+                >
+                  {extendedEdit.saving ? 'Guardando...' : 'Guardar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExtendedEdit(null)}
+                  className="flex-1 bg-[#F4F6F9] dark:bg-[#0D1B2A] text-[#6B7B8C] dark:text-[#A9B5C2] hover:bg-[#D5DCE4] dark:hover:bg-[#3A4A5C] font-semibold rounded-[8px] px-4 py-2.5 text-sm transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -10,6 +10,8 @@ export type PDFLineItem = {
   quantity: number
   unit_price: number
   total: number
+  descripcion_extendida: string | null
+  titulo_partida: string | null
 }
 
 export type PDFChapter = {
@@ -224,10 +226,18 @@ function ItemRow({
   item: PDFLineItem
   isAlt: boolean
 }) {
+  const displayDesc = item.descripcion_extendida ?? item.description
   return (
     <View style={[S.itemRow, isAlt ? S.itemRowAlt : {}]}>
       <Text style={[S.tdNum,  { flex: COL.num   }]}>{chIdx + 1}.{itemIdx + 1}</Text>
-      <Text style={[S.tdDesc, { flex: COL.desc  }]}>{item.description}</Text>
+      <View style={{ flex: COL.desc }}>
+        {item.titulo_partida ? (
+          <Text style={[S.tdDesc, { fontFamily: 'Helvetica-Bold', marginBottom: 1 }]}>
+            {item.titulo_partida}
+          </Text>
+        ) : null}
+        <Text style={S.tdDesc}>{displayDesc}</Text>
+      </View>
       <Text style={[S.tdRight,{ flex: COL.unit  }]}>{item.unit || '—'}</Text>
       <Text style={[S.tdRight,{ flex: COL.qty   }]}>{fmt(item.quantity)}</Text>
       <Text style={[S.tdRight,{ flex: COL.price }]}>{fmt(item.unit_price)} €</Text>

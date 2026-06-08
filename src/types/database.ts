@@ -78,6 +78,8 @@ export interface LineItem {
   total: number
   confidence: Confidence | null
   position: number
+  descripcion_extendida: string | null
+  titulo_partida: string | null
   created_at: string
 }
 
