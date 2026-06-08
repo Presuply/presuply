@@ -104,7 +104,7 @@ export async function POST(request: Request) {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('subscription_status, budgets_used, is_team, plan_key, budgets_this_month, month_reset_at')
+      .select('subscription_status, budgets_used, is_team, plan_key, budgets_this_month, month_reset_at, template_schema')
       .eq('id', profileOwnerId)
       .single()
 
@@ -211,6 +211,14 @@ export async function POST(request: Request) {
     // 4. Llamar a Claude con prompt cacheado
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+    // Construir el system prompt: base + sección de schema si existe
+    const templateSchema = (profile as { template_schema?: Record<string, unknown> | null } | null)?.template_schema
+    const schemaSection = templateSchema
+      ? `\n\nPLANTILLA MAESTRA DEL USUARIO — SEGUIR ESTRICTAMENTE:\nEste usuario tiene una plantilla de referencia que define su estilo habitual. Aplica este esquema al estructurar el presupuesto:\n${JSON.stringify(templateSchema, null, 2)}\n\n- Usa los tipos de capítulos del esquema cuando correspondan al contenido del documento.\n- Respeta la nomenclatura de unidades definida en el campo "nomenclatura_unidades".\n- Mantén el mismo nivel de detalle y longitud de descripciones que indica el esquema.\n- Si el documento tiene información de un tipo de trabajo no contemplado en el esquema, añade el capítulo necesario manteniendo el mismo estilo.\n- El esquema es una guía de estilo, no una restricción de contenido: extrae lo que hay en el documento, pero con el formato del esquema.`
+      : ''
+
+    const effectiveSystemPrompt = SYSTEM_PROMPT + schemaSection
+
     const userContent: Anthropic.ContentBlockParam[] = [
       ...contentBlocks,
       {
@@ -225,7 +233,7 @@ export async function POST(request: Request) {
       system: [
         {
           type: 'text',
-          text: SYSTEM_PROMPT,
+          text: effectiveSystemPrompt,
           cache_control: { type: 'ephemeral' },
         },
       ],

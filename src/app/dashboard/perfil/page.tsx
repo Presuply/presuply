@@ -43,6 +43,8 @@ export default function PerfilPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoDisplayUrl, setLogoDisplayUrl] = useState<string | null>(null)
   const [templateFile, setTemplateFile] = useState<File | null>(null)
+  const [analyzingTemplate, setAnalyzingTemplate] = useState(false)
+  const [templateSchemaReady, setTemplateSchemaReady] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -88,6 +90,7 @@ export default function PerfilPage() {
           logo_url: data.logo_url,
           template_url: data.template_url,
         })
+        if (data.template_schema) setTemplateSchemaReady(true)
         setPlanKey((data.plan_key ?? 'trial') as PlanKey)
         setSubscriptionStatus(data.subscription_status ?? 'trial')
         setBudgetsUsed(data.budgets_used ?? 0)
@@ -179,13 +182,36 @@ export default function PerfilPage() {
 
     if (updateError) {
       setError('Error al guardar el perfil. Inténtalo de nuevo.')
-    } else {
-      setProfile(prev => ({ ...prev, logo_url: newLogoUrl, template_url: newTemplateUrl }))
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      setSaving(false)
+      return
     }
 
+    setProfile(prev => ({ ...prev, logo_url: newLogoUrl, template_url: newTemplateUrl }))
+    setSaved(true)
+    setTimeout(() => setSaved(false), 3000)
     setSaving(false)
+
+    // Si se subió plantilla nueva, analizar en background sin bloquear el save
+    if (templateFile && newTemplateUrl) {
+      handleAnalyzeTemplate(newTemplateUrl)
+    }
+  }
+
+  async function handleAnalyzeTemplate(templateUrl: string) {
+    setAnalyzingTemplate(true)
+    setTemplateSchemaReady(false)
+    try {
+      const res = await fetch('/api/analyze-template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templateUrl }),
+      })
+      if (res.ok) setTemplateSchemaReady(true)
+    } catch {
+      // Error silencioso — el badge simplemente no aparece
+    } finally {
+      setAnalyzingTemplate(false)
+    }
   }
 
   function update(field: keyof ProfileForm, value: string) {
@@ -334,8 +360,36 @@ export default function PerfilPage() {
         <section className={`${sec} !space-y-3`}>
           <h2 className={secTitle}>Plantilla de presupuesto</h2>
           <p className="text-xs text-[#6B7B8C] dark:text-[#A9B5C2]">
-            Sube una foto o PDF de tu presupuesto actual. Al generar el PDF, Claude imitará su estructura con los nuevos datos.
+            Sube una foto o PDF de tu presupuesto actual. Claude analizará tu estilo y lo aplicará a todas las extracciones futuras.
           </p>
+
+          {/* Badge de estado del análisis */}
+          {analyzingTemplate && (
+            <div className="flex items-center gap-2 rounded-[8px] bg-orange-50 dark:bg-orange-900/15 border border-[#FF6A00]/30 px-3 py-2">
+              <svg className="animate-spin w-3.5 h-3.5 text-[#FF6A00] shrink-0" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              <span className="text-xs text-[#FF6A00] font-medium">Analizando plantilla con IA...</span>
+            </div>
+          )}
+          {templateSchemaReady && !analyzingTemplate && (
+            <div className="flex items-center justify-between gap-3 rounded-[8px] bg-green-50 dark:bg-green-900/15 border border-[#1FB57A]/30 px-3 py-2">
+              <span className="text-xs text-[#1FB57A] font-medium">
+                Plantilla configurada — tus presupuestos seguirán siempre el mismo esquema
+              </span>
+              {profile.template_url && (
+                <button
+                  type="button"
+                  onClick={() => handleAnalyzeTemplate(profile.template_url!)}
+                  className="shrink-0 text-xs text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#FF6A00] transition-colors whitespace-nowrap"
+                >
+                  Reanalizar
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-3">
             <label htmlFor="template" className={`${fileBtn} shrink-0`}>
               {templateDisplayName ? 'Cambiar plantilla' : 'Subir plantilla'}
