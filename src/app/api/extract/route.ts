@@ -3,6 +3,7 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getPlanLimits, type PlanKey } from '@/lib/plans'
 
 const MODEL = 'claude-sonnet-4-6'
 
@@ -110,16 +111,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // 2. Verificar suscripción y límite de trial
+    // 2. Resolver cuenta: si es miembro de equipo, usar el perfil del owner
+    const { data: teamRow } = await supabase
+      .from('teams')
+      .select('owner_id')
+      .eq('member_id', user.id)
+      .maybeSingle()
+
+    const profileOwnerId = teamRow?.owner_id ?? user.id
+
     const { data: profile } = await supabase
       .from('profiles')
-      .select('subscription_status, budgets_used, is_team')
-      .eq('id', user.id)
+      .select('subscription_status, budgets_used, is_team, plan_key, budgets_this_month, month_reset_at')
+      .eq('id', profileOwnerId)
       .single()
 
     if (!profile?.is_team) {
       const status = profile?.subscription_status ?? 'trial'
-      const used = profile?.budgets_used ?? 0
+      const planKey = (profile?.plan_key ?? 'trial') as PlanKey
 
       if (status === 'canceled') {
         return NextResponse.json({ error: 'subscription_canceled' }, { status: 403 })
@@ -127,8 +136,27 @@ export async function POST(request: Request) {
       if (status === 'past_due') {
         return NextResponse.json({ error: 'payment_failed' }, { status: 403 })
       }
-      if (status === 'trial' && used >= 3) {
+
+      // Trial: límite total de 3 presupuestos
+      if (planKey === 'trial' && (profile?.budgets_used ?? 0) >= 3) {
         return NextResponse.json({ error: 'trial_exhausted' }, { status: 403 })
+      }
+
+      // Resetear contador mensual si el mes ha cambiado
+      const today = new Date().toISOString().slice(0, 10)
+      const resetAt = profile?.month_reset_at ?? today
+      if (resetAt < today) {
+        await supabase
+          .from('profiles')
+          .update({ budgets_this_month: 0, month_reset_at: today })
+          .eq('id', user.id)
+        if (profile) profile.budgets_this_month = 0
+      }
+
+      // Límite mensual según plan
+      const limits = getPlanLimits(planKey, false)
+      if (limits.budgetsPerMonth !== null && (profile?.budgets_this_month ?? 0) >= limits.budgetsPerMonth) {
+        return NextResponse.json({ error: 'monthly_limit' }, { status: 403 })
       }
     }
 
@@ -153,8 +181,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // 3. Descargar imágenes de Storage y convertir a base64
-    const imageBlocks: Anthropic.ImageBlockParam[] = []
+    // 3. Descargar archivos de Storage y construir bloques de contenido
+    const contentBlocks: Anthropic.ContentBlockParam[] = []
 
     for (const path of uploadPaths) {
       const { data: signedData } = await supabase.storage
@@ -163,24 +191,37 @@ export async function POST(request: Request) {
 
       if (!signedData?.signedUrl) continue
 
-      const imageResponse = await fetch(signedData.signedUrl)
-      if (!imageResponse.ok) continue
+      const fileResponse = await fetch(signedData.signedUrl)
+      if (!fileResponse.ok) continue
 
-      const buffer = await imageResponse.arrayBuffer()
+      const buffer = await fileResponse.arrayBuffer()
+      const contentType = fileResponse.headers.get('content-type') ?? ''
+      const isPdf = contentType.includes('application/pdf') || path.toLowerCase().endsWith('.pdf')
 
-      imageBlocks.push({
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: toValidMediaType(imageResponse.headers.get('content-type')),
-          data: arrayBufferToBase64(buffer),
-        },
-      })
+      if (isPdf) {
+        contentBlocks.push({
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: arrayBufferToBase64(buffer),
+          },
+        } as unknown as Anthropic.ContentBlockParam)
+      } else {
+        contentBlocks.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: toValidMediaType(contentType),
+            data: arrayBufferToBase64(buffer),
+          },
+        })
+      }
     }
 
-    if (imageBlocks.length === 0 && !text) {
+    if (contentBlocks.length === 0 && !text) {
       return NextResponse.json(
-        { error: 'No se pudieron descargar las imágenes y no hay texto' },
+        { error: 'No se pudieron descargar los archivos y no hay texto' },
         { status: 422 }
       )
     }
@@ -189,7 +230,7 @@ export async function POST(request: Request) {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     const userContent: Anthropic.ContentBlockParam[] = [
-      ...imageBlocks,
+      ...contentBlocks,
       {
         type: 'text',
         text: text ? `${USER_PROMPT}\n\nTexto adicional del profesional:\n${text}` : USER_PROMPT,
@@ -315,13 +356,15 @@ export async function POST(request: Request) {
         .eq('user_id', user.id)
     }
 
-    // Incrementar contador de presupuestos usados (no aplica a cuentas del equipo)
+    // Incrementar contadores en el perfil del owner (no aplica a is_team)
     if (!profile?.is_team) {
-      const used = profile?.budgets_used ?? 0
       await supabase
         .from('profiles')
-        .update({ budgets_used: used + 1 })
-        .eq('id', user.id)
+        .update({
+          budgets_used: (profile?.budgets_used ?? 0) + 1,
+          budgets_this_month: (profile?.budgets_this_month ?? 0) + 1,
+        })
+        .eq('id', profileOwnerId)
     }
 
     return NextResponse.json(parsed)

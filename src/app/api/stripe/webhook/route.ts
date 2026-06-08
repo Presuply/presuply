@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { stripe } from '@/lib/stripe'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { PRICE_TO_PLAN } from '@/lib/plans'
 
 // Mapea el status de Stripe a nuestro subscription_status
 function mapStatus(stripeStatus: string): string {
@@ -45,11 +46,14 @@ export async function POST(request: Request) {
       case 'customer.subscription.created':
       case 'customer.subscription.updated': {
         const sub = event.data.object as Stripe.Subscription
+        const priceId = sub.items.data[0]?.price?.id ?? ''
+        const planKey = PRICE_TO_PLAN[priceId] ?? 'trial'
         await supabase
           .from('profiles')
           .update({
             stripe_subscription_id: sub.id,
             subscription_status: mapStatus(sub.status),
+            plan_key: planKey,
           })
           .eq('stripe_customer_id', customerId(sub))
         break

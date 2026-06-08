@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Confidence } from '@/types/database'
+import Tooltip from '@/components/Tooltip'
+import { usePageTooltips } from '@/hooks/usePageTooltips'
 import {
   DndContext,
   DragOverlay,
@@ -290,6 +292,8 @@ export default function PresupuestoEditorPage() {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const { activeId: tooltipId, markSeen, skipAll: skipTour } =
+    usePageTooltips(['edit_autosave', 'edit_chapters', 'edit_export'])
   const [dirty, setDirty] = useState(false)
   const [lastChange, setLastChange] = useState(0)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -723,6 +727,142 @@ export default function PresupuestoEditorPage() {
     }
   }
 
+  // ── Exportación CSV ────────────────────────────────────────────────────
+  function handleExportCSV() {
+    const fmtNum = (n: number) =>
+      n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+    const escape = (s: string) => `"${String(s ?? '').replace(/"/g, '""')}"`
+
+    const rows: string[] = []
+
+    // Cabecera del presupuesto
+    rows.push(escape(`Presupuesto #${budget.budget_number} - ${budget.client_name || 'Sin cliente'} - ${budget.issued_date}`))
+    rows.push('')
+
+    // Cabecera de columnas
+    rows.push(['Capítulo', 'Descripción', 'Unidad', 'Cantidad', 'Precio unitario', 'Total'].map(escape).join(';'))
+
+    // Partidas por capítulo
+    const sortedChapters = visibleChapters
+    for (const ch of sortedChapters) {
+      const chItems = visibleItems.filter(i => i.chapter_id === ch.id)
+      for (const item of chItems) {
+        rows.push([
+          ch.name,
+          item.description,
+          item.unit || '',
+          fmtNum(item.quantity),
+          fmtNum(item.unit_price),
+          fmtNum(item.total),
+        ].map(escape).join(';'))
+      }
+    }
+    // Huérfanos
+    const orphans = visibleItems.filter(i => !i.chapter_id || !visibleChapters.find(c => c.id === i.chapter_id))
+    for (const item of orphans) {
+      rows.push(['', item.description, item.unit || '', fmtNum(item.quantity), fmtNum(item.unit_price), fmtNum(item.total)].map(escape).join(';'))
+    }
+
+    rows.push('')
+
+    // Resumen
+    const summaryLines: [string, number][] = [
+      ['Subtotal', subtotal],
+      ...(budget.overhead_enabled ? [[`Gastos generales ${budget.overhead_rate}%`, overhead] as [string, number]] : []),
+      ...(budget.profit_enabled ? [[`Beneficio industrial ${budget.profit_rate}%`, profit] as [string, number]] : []),
+      ...(extras > 0 ? [[budget.extras_description || 'Extras', extras] as [string, number]] : []),
+      ['Base imponible', baseImponible],
+      [`${budget.tax_type} ${budget.tax_rate}%`, taxAmount],
+      ['TOTAL', totalAmount],
+    ]
+    for (const [label, amount] of summaryLines) {
+      rows.push([escape(''), escape(label), '', '', '', escape(fmtNum(amount))].join(';'))
+    }
+
+    const csv = '﻿' + rows.join('\n') // BOM para Excel español
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `presupuesto-${budget.budget_number}-${(budget.client_name || 'cliente').replace(/\s+/g, '-')}.csv`
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // ── Exportación Excel ──────────────────────────────────────────────────
+  async function handleExportExcel() {
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet('Presupuesto')
+
+    ws.columns = [
+      { width: 28 }, { width: 45 }, { width: 8 },
+      { width: 12 }, { width: 16 }, { width: 14 },
+    ]
+
+    const chapterFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFE8E8E8' } }
+    const numFmt = '#,##0.00'
+
+    // Fila título
+    const titleRow = ws.addRow([`Presupuesto #${budget.budget_number} - ${budget.client_name || 'Sin cliente'} - ${budget.issued_date}`])
+    titleRow.font = { bold: true, size: 12 }
+    ws.mergeCells(`A${titleRow.number}:F${titleRow.number}`)
+    ws.addRow([])
+
+    // Cabecera de columnas
+    const headerRow = ws.addRow(['Capítulo', 'Descripción', 'Unidad', 'Cantidad', 'Precio unitario', 'Total'])
+    headerRow.font = { bold: true }
+    headerRow.eachCell(cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D1B2A' } }; cell.font = { bold: true, color: { argb: 'FFFFFFFF' } } })
+
+    // Partidas por capítulo
+    for (const ch of visibleChapters) {
+      const chItems = visibleItems.filter(i => i.chapter_id === ch.id)
+      if (chItems.length === 0) continue
+      const chRow = ws.addRow([ch.name, '', '', '', '', chItems.reduce((s, i) => s + i.total, 0)])
+      chRow.font = { bold: true }
+      chRow.eachCell(cell => { cell.fill = chapterFill })
+      chRow.getCell(6).numFmt = numFmt
+
+      for (const item of chItems) {
+        const r = ws.addRow(['', item.description, item.unit || '', item.quantity, item.unit_price, item.total])
+        r.getCell(4).numFmt = numFmt; r.getCell(5).numFmt = numFmt; r.getCell(6).numFmt = numFmt
+      }
+    }
+    const orphans = visibleItems.filter(i => !i.chapter_id || !visibleChapters.find(c => c.id === i.chapter_id))
+    for (const item of orphans) {
+      const r = ws.addRow(['', item.description, item.unit || '', item.quantity, item.unit_price, item.total])
+      r.getCell(4).numFmt = numFmt; r.getCell(5).numFmt = numFmt; r.getCell(6).numFmt = numFmt
+    }
+
+    ws.addRow([])
+
+    // Resumen
+    const summaryLines: [string, number, boolean][] = [
+      ['Subtotal', subtotal, false],
+      ...(budget.overhead_enabled ? [[`Gastos generales ${budget.overhead_rate}%`, overhead, false] as [string, number, boolean]] : []),
+      ...(budget.profit_enabled ? [[`Beneficio industrial ${budget.profit_rate}%`, profit, false] as [string, number, boolean]] : []),
+      ...(extras > 0 ? [[budget.extras_description || 'Extras', extras, false] as [string, number, boolean]] : []),
+      ['Base imponible', baseImponible, false],
+      [`${budget.tax_type} ${budget.tax_rate}%`, taxAmount, false],
+      ['TOTAL', totalAmount, true],
+    ]
+    for (const [label, amount, isBold] of summaryLines) {
+      const r = ws.addRow(['', label, '', '', '', amount])
+      r.getCell(6).numFmt = numFmt
+      if (isBold) { r.font = { bold: true }; r.getCell(6).font = { bold: true } }
+    }
+
+    const buf = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `presupuesto-${budget.budget_number}-${(budget.client_name || 'cliente').replace(/\s+/g, '-')}.xlsx`
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   async function handleDownloadPDF() {
     if (!pdfUrl) return
     const supabase = createClient()
@@ -775,10 +915,19 @@ export default function PresupuestoEditorPage() {
             className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors">
             {generatingPdf ? 'Generando...' : pdfUrl ? 'Descargar PDF' : 'PDF'}
           </button>
-          <button type="button" onClick={handleSave} disabled={saving}
-            className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2 text-sm disabled:opacity-40 transition-colors">
-            {saving ? 'Guardando...' : 'Guardar'}
-          </button>
+          <div className="relative">
+            <button type="button" onClick={handleSave} disabled={saving}
+              className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2 text-sm disabled:opacity-40 transition-colors">
+              {saving ? 'Guardando...' : 'Guardar'}
+            </button>
+            <Tooltip
+              content="Tus cambios se guardan solos cada 30 segundos"
+              placement="bottom-right"
+              isActive={tooltipId === 'edit_autosave'}
+              onDismiss={() => markSeen('edit_autosave')}
+              onSkipAll={skipTour}
+            />
+          </div>
         </div>
       </div>
 
@@ -930,13 +1079,22 @@ export default function PresupuestoEditorPage() {
           </DragOverlay>
         </DndContext>
 
-        <button
-          type="button"
-          onClick={addChapter}
-          className="w-full py-3 border-2 border-dashed border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[12px] text-sm font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] hover:border-[#FF6A00] hover:text-[#FF6A00] transition-colors"
-        >
-          + Añadir capítulo
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={addChapter}
+            className="w-full py-3 border-2 border-dashed border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[12px] text-sm font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] hover:border-[#FF6A00] hover:text-[#FF6A00] transition-colors"
+          >
+            + Añadir capítulo
+          </button>
+          <Tooltip
+            content="Organiza las partidas por capítulos. Arrastra para reordenar"
+            placement="top"
+            isActive={tooltipId === 'edit_chapters'}
+            onDismiss={() => markSeen('edit_chapters')}
+            onSkipAll={skipTour}
+          />
+        </div>
 
         {/* Impuesto y costes adicionales */}
         <section className={sec}>
@@ -1052,6 +1210,23 @@ export default function PresupuestoEditorPage() {
             className="flex-1 bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#D5DCE4] dark:hover:bg-[#4A5A6C] font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
             {generatingPdf ? 'Generando PDF...' : pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
           </button>
+        </div>
+        <div className="relative flex gap-3 pb-8">
+          <button type="button" onClick={handleExportCSV}
+            className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm transition-colors">
+            Exportar CSV
+          </button>
+          <button type="button" onClick={handleExportExcel}
+            className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm transition-colors">
+            Exportar Excel
+          </button>
+          <Tooltip
+            content="Genera tu PDF profesional, o exporta a Excel/CSV"
+            placement="top-right"
+            isActive={tooltipId === 'edit_export'}
+            onDismiss={() => markSeen('edit_export')}
+            onSkipAll={skipTour}
+          />
         </div>
 
       </div>

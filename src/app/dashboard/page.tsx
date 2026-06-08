@@ -5,6 +5,10 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Budget, Folder } from '@/types/database'
+import { getPlanLimits, type PlanKey } from '@/lib/plans'
+import OnboardingModal from '@/components/OnboardingModal'
+import Tooltip from '@/components/Tooltip'
+import { usePageTooltips } from '@/hooks/usePageTooltips'
 import {
   DndContext,
   DragOverlay,
@@ -143,52 +147,54 @@ function DroppableFolderCard({
             : 'border-[#D5DCE4] dark:border-[#3A4A5C]'
         }`}
       >
-        <button type="button" onClick={onToggle}
-          className="w-full flex items-center gap-3 px-3 py-3 text-left">
-          <FolderIcon color={folder.color} size={22} />
-          <div className="flex-1 min-w-0">
-            {isRenaming ? (
-              <input
-                ref={nameRef}
-                type="text"
-                value={renameName}
-                onChange={e => setRenameName(e.target.value)}
-                onBlur={onRenameConfirm}
-                onKeyDown={e => { if (e.key === 'Enter') onRenameConfirm(); if (e.key === 'Escape') { setRenameName(folder.name); onRenameConfirm() } }}
-                onClick={e => e.stopPropagation()}
-                className="w-full bg-transparent text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] focus:outline-none focus:ring-1 focus:ring-[#FF6A00] rounded px-1"
-              />
-            ) : (
-              <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{folder.name}</p>
-            )}
-            <p className="text-xs text-[#A9B5C2]">{count} presupuesto{count !== 1 ? 's' : ''}</p>
-          </div>
-          <span className="text-[#A9B5C2] text-xs shrink-0">{isExpanded ? '▲' : '▼'}</span>
-        </button>
-
-        {/* Menú ⋮ */}
-        <div className="absolute top-2 right-8" onClick={e => e.stopPropagation()}>
-          <button type="button"
-            onClick={() => setOpenMenuId(openMenuId === folder.id ? null : folder.id)}
-            className="w-7 h-7 flex items-center justify-center text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] rounded transition-colors text-lg">
-            ⋮
-          </button>
-          {openMenuId === folder.id && (
-            <div className="absolute right-0 top-8 bg-white dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[8px] shadow-lg z-20 min-w-[160px]">
-              <button type="button" onClick={onRenameStart}
-                className="w-full text-left px-4 py-2.5 text-sm text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] transition-colors rounded-t-[8px]">
-                Renombrar
-              </button>
-              <button type="button" onClick={() => { setColorPickerFolderId(showColorPicker ? null : folder.id); setOpenMenuId(null) }}
-                className="w-full text-left px-4 py-2.5 text-sm text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] transition-colors">
-                Cambiar color
-              </button>
-              <button type="button" onClick={onDeleteRequest}
-                className="w-full text-left px-4 py-2.5 text-sm text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors rounded-b-[8px]">
-                Eliminar carpeta
-              </button>
+        <div className="flex items-center">
+          <button type="button" onClick={onToggle}
+            className="flex flex-1 items-center gap-3 px-3 py-3 text-left min-w-0">
+            <FolderIcon color={folder.color} size={22} />
+            <div className="flex-1 min-w-0">
+              {isRenaming ? (
+                <input
+                  ref={nameRef}
+                  type="text"
+                  value={renameName}
+                  onChange={e => setRenameName(e.target.value)}
+                  onBlur={onRenameConfirm}
+                  onKeyDown={e => { if (e.key === 'Enter') onRenameConfirm(); if (e.key === 'Escape') { setRenameName(folder.name); onRenameConfirm() } }}
+                  onClick={e => e.stopPropagation()}
+                  className="w-full bg-transparent text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] focus:outline-none focus:ring-1 focus:ring-[#FF6A00] rounded px-1"
+                />
+              ) : (
+                <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{folder.name}</p>
+              )}
+              <p className="text-xs text-[#A9B5C2]">{count} presupuesto{count !== 1 ? 's' : ''}</p>
             </div>
-          )}
+            <span className="text-[#A9B5C2] text-xs shrink-0">{isExpanded ? '▲' : '▼'}</span>
+          </button>
+
+          {/* Menú ⋮ — hermano en flex, sin posicionamiento absoluto */}
+          <div className="relative shrink-0 pr-1" onClick={e => e.stopPropagation()}>
+            <button type="button"
+              onClick={() => setOpenMenuId(openMenuId === folder.id ? null : folder.id)}
+              className="w-7 h-7 flex items-center justify-center text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] rounded transition-colors text-lg">
+              ⋮
+            </button>
+            {openMenuId === folder.id && (
+              <div className="absolute right-0 top-8 bg-white dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[8px] shadow-lg z-20 min-w-[160px]">
+                <button type="button" onClick={onRenameStart}
+                  className="w-full text-left px-4 py-2.5 text-sm text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] transition-colors rounded-t-[8px]">
+                  Renombrar
+                </button>
+                <button type="button" onClick={() => { setColorPickerFolderId(showColorPicker ? null : folder.id); setOpenMenuId(null) }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] transition-colors">
+                  Cambiar color
+                </button>
+                <button type="button" onClick={onDeleteRequest}
+                  className="w-full text-left px-4 py-2.5 text-sm text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors rounded-b-[8px]">
+                  Eliminar carpeta
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -224,6 +230,12 @@ export default function DashboardPage() {
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('trial')
   const [budgetsUsed, setBudgetsUsed] = useState(0)
   const [openingPortal, setOpeningPortal] = useState(false)
+  const [planKey, setPlanKey] = useState<PlanKey>('trial')
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [userEmail, setUserEmail] = useState('')
+  const [isTeam, setIsTeam] = useState(false)
+  const [showFolderUpgradeModal, setShowFolderUpgradeModal] = useState(false)
+  const [ownerEmail, setOwnerEmail] = useState<string | null>(null)
 
   // Búsqueda
   const [searchActive, setSearchActive] = useState(false)
@@ -259,17 +271,31 @@ export default function DashboardPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.replace('/login'); return }
 
-      const [foldersRes, budgetsRes, profileRes] = await Promise.all([
+      const [foldersRes, budgetsRes, profileRes, teamMemberRes] = await Promise.all([
         supabase.from('folders').select('*').order('position'),
         supabase.from('budgets').select('*').order('updated_at', { ascending: false }),
-        supabase.from('profiles').select('subscription_status, budgets_used').eq('id', user.id).single(),
+        supabase.from('profiles').select('subscription_status, budgets_used, plan_key, is_team, onboarding_completed').eq('id', user.id).single(),
+        supabase.from('teams').select('owner_id').eq('member_id', user.id).maybeSingle(),
       ])
 
       setFolders(foldersRes.data ?? [])
       setBudgets(budgetsRes.data ?? [])
+      setUserEmail(user.email ?? '')
       if (profileRes.data) {
         setSubscriptionStatus(profileRes.data.subscription_status ?? 'trial')
         setBudgetsUsed(profileRes.data.budgets_used ?? 0)
+        setPlanKey((profileRes.data.plan_key ?? 'trial') as PlanKey)
+        setIsTeam(profileRes.data.is_team ?? false)
+        setShowOnboarding(!profileRes.data.onboarding_completed)
+      }
+
+      if (teamMemberRes.data?.owner_id) {
+        const { data: ownerProfile } = await supabase
+          .from('profiles')
+          .select('full_name, company_name')
+          .eq('id', teamMemberRes.data.owner_id)
+          .single()
+        setOwnerEmail(ownerProfile?.company_name || ownerProfile?.full_name || 'el propietario')
       }
       setLoading(false)
     }
@@ -387,6 +413,20 @@ export default function DashboardPage() {
     await supabase.from('budgets').update({ folder_id: newFolderId }).eq('id', budgetId)
   }
 
+  // ── Tooltips ───────────────────────────────────────────────────────────
+  const { activeId: tooltipId, markSeen, skipAll: skipTour } =
+    usePageTooltips(['dash_new', 'dash_folder', 'dash_search'])
+
+  // ── Onboarding ─────────────────────────────────────────────────────────
+  async function completeOnboarding() {
+    setShowOnboarding(false)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await supabase.from('profiles').update({ onboarding_completed: true }).eq('id', user.id)
+    }
+  }
+
   // ── Portal Stripe ──────────────────────────────────────────────────────
   async function handlePortal() {
     setOpeningPortal(true)
@@ -433,18 +473,27 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-3 min-w-0">
-                <img src="/images/logo.svg" alt="Presuply" className="h-7 w-auto shrink-0" />
-                <h1 className="text-xl font-bold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">Presupuestos</h1>
+              <div className="flex items-center gap-3 shrink-0">
+                <img src="/images/logo.svg" alt="Presuply" className="h-7 w-auto" />
+                <h1 className="text-xl font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">Presupuestos</h1>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button type="button" onClick={() => setSearchActive(true)}
-                  aria-label="Buscar"
-                  className="w-9 h-9 flex items-center justify-center text-[#6B7B8C] hover:text-[#FF6A00] hover:bg-white dark:hover:bg-[#1B2A3A] rounded-[8px] transition-colors">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  </svg>
-                </button>
+                <div className="relative">
+                  <button type="button" onClick={() => setSearchActive(true)}
+                    aria-label="Buscar"
+                    className="w-9 h-9 flex items-center justify-center text-[#6B7B8C] hover:text-[#FF6A00] hover:bg-white dark:hover:bg-[#1B2A3A] rounded-[8px] transition-colors">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                  </button>
+                  <Tooltip
+                    content="Encuentra cualquier presupuesto al instante"
+                    placement="bottom-right"
+                    isActive={!showOnboarding && tooltipId === 'dash_search'}
+                    onDismiss={() => markSeen('dash_search')}
+                    onSkipAll={skipTour}
+                  />
+                </div>
                 {hasSubscription && (
                   <button type="button" onClick={handlePortal} disabled={openingPortal}
                     className="text-sm text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#FF6A00] disabled:opacity-40 transition-colors hidden sm:block">
@@ -455,18 +504,54 @@ export default function DashboardPage() {
                   className="text-sm text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#FF6A00] transition-colors hidden sm:block">
                   Mi perfil
                 </Link>
-                <button type="button" onClick={() => { setCreatingFolder(true); setOpenMenuId(null) }}
-                  className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium transition-colors">
-                  + Carpeta
-                </button>
-                <Link href="/dashboard/nuevo"
-                  className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm transition-colors">
-                  + Nuevo
-                </Link>
+                {(() => {
+                  const canUseFolders = getPlanLimits(planKey, isTeam).canUseFolders
+                  return (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => canUseFolders ? (setCreatingFolder(true), setOpenMenuId(null)) : setShowFolderUpgradeModal(true)}
+                        className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1.5"
+                      >
+                        {canUseFolders ? null : <span className="text-xs">🔒</span>}
+                        + Carpeta
+                      </button>
+                      <Tooltip
+                        content="Organiza presupuestos por zona o cliente"
+                        placement="bottom-right"
+                        isActive={!showOnboarding && tooltipId === 'dash_folder'}
+                        onDismiss={() => markSeen('dash_folder')}
+                        onSkipAll={skipTour}
+                      />
+                    </div>
+                  )
+                })()}
+                <div className="relative">
+                  <Link href="/dashboard/nuevo"
+                    className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm transition-colors inline-block">
+                    + Nuevo
+                  </Link>
+                  <Tooltip
+                    content="Crea tu primer presupuesto"
+                    placement="bottom-right"
+                    isActive={!showOnboarding && tooltipId === 'dash_new'}
+                    onDismiss={() => markSeen('dash_new')}
+                    onSkipAll={skipTour}
+                  />
+                </div>
               </div>
             </>
           )}
         </div>
+
+        {/* Banner miembro de equipo */}
+        {ownerEmail && (
+          <div className="rounded-[10px] bg-[#EDF0F4] dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] px-4 py-2.5 flex items-center gap-2">
+            <span className="text-xs text-[#6B7B8C] dark:text-[#A9B5C2]">
+              Estás usando el plan de <strong className="text-[#0D1B2A] dark:text-[#F4F6F9]">{ownerEmail}</strong>
+            </span>
+          </div>
+        )}
 
         {/* Banner trial */}
         {isTrial && !loading && (
@@ -694,6 +779,38 @@ export default function DashboardPage() {
         )}
 
       </div>
+
+      {/* Modal: onboarding */}
+      {showOnboarding && !loading && (
+        <OnboardingModal userEmail={userEmail} onComplete={completeOnboarding} />
+      )}
+
+      {/* Modal: upgrade para carpetas */}
+      {showFolderUpgradeModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
+          onClick={() => setShowFolderUpgradeModal(false)}>
+          <div className="bg-white dark:bg-[#1B2A3A] rounded-[12px] p-6 max-w-sm w-full space-y-4 shadow-xl"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🔒</span>
+              <h3 className="font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">Función bloqueada</h3>
+            </div>
+            <p className="text-sm text-[#6B7B8C] dark:text-[#A9B5C2]">
+              Las carpetas están disponibles a partir del plan <strong className="text-[#0D1B2A] dark:text-[#F4F6F9]">Profesional</strong>.
+            </p>
+            <div className="flex gap-2">
+              <Link href="/pricing"
+                className="flex-1 bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm text-center transition-colors">
+                Ver planes →
+              </Link>
+              <button type="button" onClick={() => setShowFolderUpgradeModal(false)}
+                className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#6B7B8C] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] rounded-[8px] px-4 py-2.5 text-sm transition-colors">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: confirmar eliminación de carpeta */}
       {deleteFolderConfirm && (
