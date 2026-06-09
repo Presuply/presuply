@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Tooltip from '@/components/Tooltip'
 import { usePageTooltips } from '@/hooks/usePageTooltips'
+import LoadingButton from '@/components/LoadingButton'
 
 interface UploadedFile {
   id: string
@@ -23,6 +24,7 @@ export default function NuevoPresupuestoPage() {
   const [text, setText] = useState('')
   const [uploading, setUploading] = useState(false)
   const [extracting, setExtracting] = useState(false)
+  const [generatingFull, setGeneratingFull] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Evita crear dos drafts en React Strict Mode (doble ejecución de efectos en dev)
   const creatingRef = useRef(false)
@@ -172,41 +174,83 @@ export default function NuevoPresupuestoPage() {
     setUploads((prev) => prev.filter((u) => u.id !== upload.id))
   }
 
+  async function callExtract(): Promise<boolean> {
+    const response = await fetch('/api/extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        budgetId,
+        uploadPaths: uploads.map((u) => u.storagePath),
+        text: text.trim() || undefined,
+      }),
+    })
+    const data = await response.json()
+    if (!response.ok) {
+      if (data.error === 'trial_exhausted' || data.error === 'monthly_limit') {
+        router.push('/pricing')
+        return false
+      }
+      setError(data.error ?? 'Error al generar el presupuesto. Inténtalo de nuevo.')
+      return false
+    }
+    return true
+  }
+
   async function handleGenerate() {
     if (!budgetId) return
     setExtracting(true)
     setError(null)
-
     try {
-      const response = await fetch('/api/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          budgetId,
-          uploadPaths: uploads.map((u) => u.storagePath),
-          text: text.trim() || undefined,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        if (data.error === 'trial_exhausted' || data.error === 'monthly_limit') {
-          router.push('/pricing')
-          return
-        }
-        setError(data.error ?? 'Error al generar el presupuesto. Inténtalo de nuevo.')
-        setExtracting(false)
-      } else {
-        router.push(`/dashboard/presupuesto/${budgetId}`)
-      }
+      const ok = await callExtract()
+      if (ok) router.push(`/dashboard/presupuesto/${budgetId}`)
     } catch {
       setError('No se pudo conectar con el servidor. Inténtalo de nuevo.')
+    } finally {
       setExtracting(false)
     }
   }
 
+  async function handleGenerateFull() {
+    if (!budgetId) return
+    setGeneratingFull(true)
+    setError(null)
+    try {
+      // Fase 1: extraer partidas
+      const ok = await callExtract()
+      if (!ok) return
+
+      // Fase 2: expandir descripciones
+      const supabase = createClient()
+      const { data: rawItems } = await supabase
+        .from('line_items')
+        .select('id, description')
+        .eq('budget_id', budgetId)
+
+      if (rawItems && rawItems.length > 0) {
+        try {
+          const res = await fetch('/api/expand-descriptions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              budgetId,
+              items: rawItems.map(i => ({ id: i.id, description: i.description })),
+            }),
+          })
+          if (!res.ok) throw new Error('expand failed')
+        } catch {
+          setError('Las descripciones extendidas no se pudieron generar. Puedes generarlas desde el editor.')
+        }
+      }
+
+      router.push(`/dashboard/presupuesto/${budgetId}`)
+    } catch {
+      setError('No se pudo conectar con el servidor. Inténtalo de nuevo.')
+      setGeneratingFull(false)
+    }
+  }
+
   const canGenerate = uploads.length > 0 || text.trim().length > 0
+  const busy = uploading || extracting || generatingFull
   const { activeId: tooltipId, markSeen, skipAll: skipTour } =
     usePageTooltips(['new_upload', 'new_ai'])
 
@@ -325,22 +369,42 @@ export default function NuevoPresupuestoPage() {
           </p>
         )}
 
-        <div className="relative">
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={!canGenerate || uploading || extracting}
+        <div className="space-y-3">
+          <div className="relative">
+            <LoadingButton
+              loading={extracting}
+              onClick={handleGenerate}
+              variant="secondary"
+              messages={["Analizando con IA...", "Extrayendo partidas...", "Casi listo..."]}
+              duration={15000}
+              disabled={!canGenerate || busy}
+              className="w-full border-2 border-[#FF6A00] text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/10 font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Generar presupuesto
+            </LoadingButton>
+            <Tooltip
+              content="La IA analizará todo y extraerá las partidas automáticamente"
+              placement="top"
+              isActive={tooltipId === 'new_ai'}
+              onDismiss={() => markSeen('new_ai')}
+              onSkipAll={skipTour}
+            />
+          </div>
+
+          <LoadingButton
+            loading={generatingFull}
+            onClick={handleGenerateFull}
+            variant="primary"
+            messages={["Extrayendo partidas...", "Analizando imágenes...", "Generando descripciones técnicas...", "Aplicando estilo profesional...", "Casi listo..."]}
+            duration={45000}
+            disabled={!canGenerate || busy}
             className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            {extracting ? 'Analizando con IA...' : 'Generar presupuesto'}
-          </button>
-          <Tooltip
-            content="La IA analizará todo y extraerá las partidas automáticamente"
-            placement="top"
-            isActive={tooltipId === 'new_ai'}
-            onDismiss={() => markSeen('new_ai')}
-            onSkipAll={skipTour}
-          />
+            ✨ Generar presupuesto completo
+          </LoadingButton>
+          <p className="text-xs text-[#A9B5C2] text-center">
+            El presupuesto completo incluye descripciones técnicas profesionales — tarda ~30 segundos más
+          </p>
         </div>
 
       </div>

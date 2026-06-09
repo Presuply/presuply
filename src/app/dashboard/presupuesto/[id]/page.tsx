@@ -1363,7 +1363,7 @@ export default function PresupuestoEditorPage() {
             ← Volver
           </a>
           <span className="text-base font-bold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">
-            Presupuesto #{budget.budget_number}
+            {budget.nombre || `Presupuesto #${budget.budget_number}`}
           </span>
           <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
             <button type="button" onClick={() => setStatusOpen(prev => !prev)}>
