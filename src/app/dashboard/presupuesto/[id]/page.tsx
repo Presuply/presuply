@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { Confidence } from '@/types/database'
 import Tooltip from '@/components/Tooltip'
 import { usePageTooltips } from '@/hooks/usePageTooltips'
+import LoadingButton from '@/components/LoadingButton'
 import {
   DndContext,
   DragOverlay,
@@ -401,6 +402,8 @@ export default function PresupuestoEditorPage() {
   const [generatingPdf, setGeneratingPdf] = useState(false)
   const [generatingBudget, setGeneratingBudget] = useState(false)
   const [generatingBC3, setGeneratingBC3] = useState(false)
+  const [loadingCsv, setLoadingCsv] = useState(false)
+  const [loadingExcel, setLoadingExcel] = useState(false)
   const [extendedEdit, setExtendedEdit] = useState<ExtendedDescEdit | null>(null)
   const [chapters, setChapters] = useState<EditableChapter[]>([])
   const [lineItems, setLineItems] = useState<EditableLineItem[]>([])
@@ -949,7 +952,10 @@ export default function PresupuestoEditorPage() {
   }
 
   // ── Exportación CSV ────────────────────────────────────────────────────
-  function handleExportCSV() {
+  async function handleExportCSV() {
+    setLoadingCsv(true)
+    await Promise.resolve()
+    try {
     const fmtNum = (n: number) =>
       n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -1011,10 +1017,15 @@ export default function PresupuestoEditorPage() {
     a.download = `presupuesto-${budget.budget_number}-${(budget.client_name || 'cliente').replace(/\s+/g, '-')}.csv`
     document.body.appendChild(a); a.click(); document.body.removeChild(a)
     URL.revokeObjectURL(url)
+    } finally {
+      setLoadingCsv(false)
+    }
   }
 
   // ── Exportación Excel ──────────────────────────────────────────────────
   async function handleExportExcel() {
+    setLoadingExcel(true)
+    try {
     const ExcelJS = (await import('exceljs')).default
     const wb = new ExcelJS.Workbook()
     const ws = wb.addWorksheet('Presupuesto')
@@ -1086,6 +1097,9 @@ export default function PresupuestoEditorPage() {
     a.download = `presupuesto-${budget.budget_number}-${(budget.client_name || 'cliente').replace(/\s+/g, '-')}.xlsx`
     document.body.appendChild(a); a.click(); document.body.removeChild(a)
     URL.revokeObjectURL(url)
+    } finally {
+      setLoadingExcel(false)
+    }
   }
 
   async function handleDownloadPDF() {
@@ -1252,10 +1266,16 @@ export default function PresupuestoEditorPage() {
         </div>
         <div className="hidden sm:flex items-center gap-2 shrink-0">
           <div className="relative">
-            <button type="button" onClick={handleSave} disabled={saving}
-              className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors">
-              {saving ? 'Guardando...' : 'Guardar borrador'}
-            </button>
+            <LoadingButton
+              loading={saving}
+              onClick={handleSave}
+              variant="secondary"
+              messages={["Guardando...", "Sincronizando datos...", "Casi listo..."]}
+              duration={2000}
+              className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors"
+            >
+              Guardar borrador
+            </LoadingButton>
             <Tooltip
               content="Tus cambios se guardan solos cada 30 segundos"
               placement="bottom-right"
@@ -1264,15 +1284,27 @@ export default function PresupuestoEditorPage() {
               onSkipAll={skipTour}
             />
           </div>
-          <button type="button" onClick={handleGenerateBudget} disabled={generatingBudget}
-            className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors">
-            {generatingBudget ? 'Generando...' : '✨ Generar presupuesto'}
-          </button>
-          <button type="button" onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
-            disabled={generatingPdf}
-            className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm disabled:opacity-40 transition-colors">
-            {generatingPdf ? 'Generando PDF...' : pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
-          </button>
+          <LoadingButton
+            loading={generatingBudget}
+            onClick={handleGenerateBudget}
+            variant="secondary"
+            messages={["Analizando partidas...", "Generando descripciones técnicas...", "Revisando terminología...", "Aplicando estilo profesional...", "Casi listo..."]}
+            duration={20000}
+            className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors"
+          >
+            ✨ Generar presupuesto
+          </LoadingButton>
+          <LoadingButton
+            loading={generatingPdf}
+            onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
+            variant="primary"
+            messages={["Preparando el documento...", "Componiendo páginas...", "Aplicando formato profesional...", "Generando PDF..."]}
+            duration={80000}
+            messageInterval={15000}
+            className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm disabled:opacity-40 transition-colors"
+          >
+            {pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
+          </LoadingButton>
         </div>
       </div>
 
@@ -1584,19 +1616,37 @@ export default function PresupuestoEditorPage() {
 
         {/* Botones móvil */}
         <div className="flex flex-col gap-3 pb-4">
-          <button type="button" onClick={handleSave} disabled={saving}
-            className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
-            {saving ? 'Guardando...' : 'Guardar borrador'}
-          </button>
-          <button type="button" onClick={handleGenerateBudget} disabled={generatingBudget}
-            className="w-full border-2 border-[#FF6A00] text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/10 font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
-            {generatingBudget ? 'Generando presupuesto...' : '✨ Generar presupuesto'}
-          </button>
-          <button type="button" onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
-            disabled={generatingPdf}
-            className="w-full bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#D5DCE4] dark:hover:bg-[#4A5A6C] font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
-            {generatingPdf ? 'Generando PDF...' : pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
-          </button>
+          <LoadingButton
+            loading={saving}
+            onClick={handleSave}
+            variant="primary"
+            messages={["Guardando...", "Sincronizando datos...", "Casi listo..."]}
+            duration={2000}
+            className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors"
+          >
+            Guardar borrador
+          </LoadingButton>
+          <LoadingButton
+            loading={generatingBudget}
+            onClick={handleGenerateBudget}
+            variant="secondary"
+            messages={["Analizando partidas...", "Generando descripciones técnicas...", "Revisando terminología...", "Aplicando estilo profesional...", "Casi listo..."]}
+            duration={20000}
+            className="w-full border-2 border-[#FF6A00] text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/10 font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors"
+          >
+            ✨ Generar presupuesto
+          </LoadingButton>
+          <LoadingButton
+            loading={generatingPdf}
+            onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
+            variant="secondary"
+            messages={["Preparando el documento...", "Componiendo páginas...", "Aplicando formato profesional...", "Generando PDF..."]}
+            duration={80000}
+            messageInterval={15000}
+            className="w-full bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#D5DCE4] dark:hover:bg-[#4A5A6C] font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors"
+          >
+            {pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
+          </LoadingButton>
           {!hasExtendedDescriptions && (
             <p className="text-xs text-[#A9B5C2] text-center">
               Genera el presupuesto primero para obtener descripciones profesionales
@@ -1605,18 +1655,36 @@ export default function PresupuestoEditorPage() {
         </div>
         <div className="space-y-2 pb-8">
           <div className="relative flex flex-wrap gap-3">
-            <button type="button" onClick={handleExportCSV}
-              className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm transition-colors">
+            <LoadingButton
+              loading={loadingCsv}
+              onClick={handleExportCSV}
+              variant="secondary"
+              messages={["Preparando datos...", "Generando CSV..."]}
+              duration={1000}
+              className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm disabled:opacity-40 transition-colors"
+            >
               Exportar CSV
-            </button>
-            <button type="button" onClick={handleExportExcel}
-              className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm transition-colors">
+            </LoadingButton>
+            <LoadingButton
+              loading={loadingExcel}
+              onClick={handleExportExcel}
+              variant="secondary"
+              messages={["Preparando datos...", "Aplicando formato Excel...", "Generando archivo..."]}
+              duration={2000}
+              className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm disabled:opacity-40 transition-colors"
+            >
               Exportar Excel
-            </button>
-            <button type="button" onClick={handleExportBC3} disabled={generatingBC3}
-              className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm disabled:opacity-40 transition-colors">
-              {generatingBC3 ? 'Generando BC3...' : 'Exportar BC3'}
-            </button>
+            </LoadingButton>
+            <LoadingButton
+              loading={generatingBC3}
+              onClick={handleExportBC3}
+              variant="secondary"
+              messages={["Analizando partidas...", "Generando descomposición de precios...", "Calculando unidades básicas...", "Componiendo archivo BC3...", "Casi listo..."]}
+              duration={40000}
+              className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm disabled:opacity-40 transition-colors"
+            >
+              Exportar BC3
+            </LoadingButton>
             <Tooltip
               content="Genera tu PDF profesional, o exporta a Excel/CSV/BC3"
               placement="top-right"
