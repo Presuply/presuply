@@ -335,7 +335,7 @@ export default function NuevoPresupuestoPage() {
             {extracting ? 'Analizando con IA...' : 'Generar presupuesto'}
           </button>
           <Tooltip
-            content="Claude analizará todo y extraerá las partidas automáticamente"
+            content="La IA analizará todo y extraerá las partidas automáticamente"
             placement="top"
             isActive={tooltipId === 'new_ai'}
             onDismiss={() => markSeen('new_ai')}

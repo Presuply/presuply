@@ -291,7 +291,7 @@ export async function POST(request: Request) {
         console.error('Cleaned string:', cleaned.slice(0, 500))
         console.error('Raw text completo:', rawText)
         return NextResponse.json(
-          { error: 'No se pudo parsear la respuesta de Claude', raw: rawText },
+          { error: 'No se pudo procesar la respuesta de la IA', raw: rawText },
           { status: 422 }
         )
       }

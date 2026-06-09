@@ -369,7 +369,7 @@ export default function PerfilPage() {
             />
           </div>
           <p className="text-xs text-[#6B7B8C] dark:text-[#A9B5C2]">
-            Sube una foto o PDF de tu presupuesto actual. Claude analizará tu estilo y lo aplicará a todas las extracciones futuras.
+            Sube una foto o PDF de tu presupuesto actual. La IA analizará tu estilo y lo aplicará a todas las extracciones futuras.
           </p>
 
           {/* Badge de estado del análisis */}
