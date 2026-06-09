@@ -70,21 +70,22 @@ export async function POST(request: Request) {
 
     const rawText = response.content[0]?.type === 'text' ? response.content[0].text : ''
 
-    // Limpieza robusta del JSON
-    let cleaned = rawText
-      .replace(/```json/gi, '')
-      .replace(/```/g, '')
-      .trim()
-    const firstBracket = cleaned.indexOf('[')
-    const lastBracket = cleaned.lastIndexOf(']')
-    if (firstBracket !== -1) cleaned = cleaned.slice(firstBracket)
-    if (lastBracket !== -1) cleaned = cleaned.slice(0, cleaned.lastIndexOf(']') + 1)
-
     let expanded: Array<{ titulo: string; descripcion_extendida: string }>
+    let cleaned = ''
     try {
+      cleaned = rawText
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim()
+      const firstBracket = cleaned.indexOf('[')
+      if (firstBracket !== -1) cleaned = cleaned.slice(firstBracket)
+      const lastBracket = cleaned.lastIndexOf(']')
+      if (lastBracket !== -1) cleaned = cleaned.slice(0, lastBracket + 1)
       expanded = JSON.parse(cleaned)
-    } catch {
-      console.error('Respuesta no parseable de Sonnet:', rawText)
+    } catch (parseErr) {
+      console.error('Expand parse error:', parseErr instanceof Error ? parseErr.message : String(parseErr))
+      console.error('Cleaned:', cleaned.slice(0, 500))
+      console.error('Raw:', rawText)
       return NextResponse.json(
         { error: 'No se pudo parsear la respuesta de IA', raw: rawText },
         { status: 422 }
