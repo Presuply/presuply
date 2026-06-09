@@ -1,4 +1,4 @@
-export type BudgetStatus = 'draft' | 'sent'
+export type BudgetStatus = 'borrador' | 'enviado' | 'aceptado' | 'rechazado' | 'en_revision'
 export type Confidence = 'alta' | 'media' | 'baja'
 
 export interface Profile {

@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { Confidence } from '@/types/database'
+import type { BudgetStatus, Confidence } from '@/types/database'
 import Tooltip from '@/components/Tooltip'
 import { usePageTooltips } from '@/hooks/usePageTooltips'
 import LoadingButton from '@/components/LoadingButton'
+import StatusBadge from '@/components/StatusBadge'
 import {
   DndContext,
   DragOverlay,
@@ -443,6 +444,8 @@ export default function PresupuestoEditorPage() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [budgetStatus, setBudgetStatus] = useState<BudgetStatus>('borrador')
+  const [statusOpen, setStatusOpen] = useState(false)
   const [budgetSectionOpen, setBudgetSectionOpen] = useState(true)
   const [clientSectionOpen, setClientSectionOpen] = useState(true)
   const [collapsedChapterIds, setCollapsedChapterIds] = useState<Set<string>>(() => new Set())
@@ -507,6 +510,7 @@ export default function PresupuestoEditorPage() {
       ])
       if (!b) { setLoading(false); return }
       if (b.pdf_url) setPdfUrl(b.pdf_url)
+      setBudgetStatus((b.status ?? 'borrador') as BudgetStatus)
       setProfileIban(profile?.iban ?? null)
       setProfileTemplateUrl(profile?.template_url ?? null)
 
@@ -798,6 +802,14 @@ export default function PresupuestoEditorPage() {
       })
     }
     markDirty()
+  }
+
+  // ── Estado del presupuesto ────────────────────────────────────────────────
+  async function handleStatusChange(newStatus: BudgetStatus) {
+    setStatusOpen(false)
+    setBudgetStatus(newStatus)
+    const supabase = createClient()
+    await supabase.from('budgets').update({ status: newStatus }).eq('id', id)
   }
 
   // ── Guardado ─────────────────────────────────────────────────────────────
@@ -1282,7 +1294,7 @@ export default function PresupuestoEditorPage() {
   return (
     <main
       className="min-h-screen bg-[#F4F6F9] dark:bg-[#0D1B2A]"
-      onClick={() => setOpenMenuId(null)}
+      onClick={() => { setOpenMenuId(null); setStatusOpen(false) }}
     >
       {/* Barra superior */}
       <div className="bg-white dark:bg-[#1B2A3A] border-b border-[#D5DCE4] dark:border-[#3A4A5C] px-4 py-3 flex items-center justify-between gap-3">
@@ -1293,6 +1305,22 @@ export default function PresupuestoEditorPage() {
           <span className="text-base font-bold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">
             Presupuesto #{budget.budget_number}
           </span>
+          <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
+            <button type="button" onClick={() => setStatusOpen(prev => !prev)}>
+              <StatusBadge status={budgetStatus} size="md" />
+            </button>
+            {statusOpen && (
+              <div className="absolute left-0 top-8 bg-white dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[8px] shadow-lg z-20 min-w-[160px] py-1">
+                {(['borrador', 'enviado', 'aceptado', 'rechazado', 'en_revision'] as BudgetStatus[]).map(s => (
+                  <button key={s} type="button"
+                    onClick={() => handleStatusChange(s)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] ${budgetStatus === s ? 'font-semibold' : ''}`}>
+                    <StatusBadge status={s} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {dirty && <span className="text-xs text-[#A9B5C2] shrink-0">Sin guardar</span>}
         </div>
         <div className="hidden sm:flex items-center gap-2 shrink-0">

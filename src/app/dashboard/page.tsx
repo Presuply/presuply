@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { Budget, Folder } from '@/types/database'
+import type { Budget, BudgetStatus, Folder } from '@/types/database'
+import StatusBadge from '@/components/StatusBadge'
 import { getPlanLimits, type PlanKey } from '@/lib/plans'
 import OnboardingModal from '@/components/OnboardingModal'
 import Tooltip from '@/components/Tooltip'
@@ -27,6 +28,11 @@ import {
 
 const FOLDER_COLORS = ['#FF6A00', '#1FB57A', '#3E7BFA', '#F5A623', '#E5484D', '#6B7B8C', '#0D1B2A', '#9B59B6']
 const TRIAL_LIMIT = 3
+const ALL_STATUSES: BudgetStatus[] = ['borrador', 'enviado', 'aceptado', 'rechazado', 'en_revision']
+const STATUS_LABELS: Record<BudgetStatus, string> = {
+  borrador: 'Borrador', enviado: 'Enviado', aceptado: 'Aceptado',
+  rechazado: 'Rechazado', en_revision: 'En revisión',
+}
 
 const fmt = (n: number) => n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtDate = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}` }
@@ -77,13 +83,7 @@ function DraggableBudgetRow({ budget, onDelete, deletingId }: {
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-[#A9B5C2]">#{budget.budget_number}</span>
-              <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                budget.status === 'sent'
-                  ? 'bg-[#1FB57A]/15 text-[#1FB57A]'
-                  : 'bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#6B7B8C] dark:text-[#A9B5C2]'
-              }`}>
-                {budget.status === 'sent' ? 'Enviado' : 'Borrador'}
-              </span>
+              <StatusBadge status={budget.status} />
             </div>
             <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">
               {budget.client_name ?? 'Sin cliente'}
@@ -237,9 +237,10 @@ export default function DashboardPage() {
   const [showFolderUpgradeModal, setShowFolderUpgradeModal] = useState(false)
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null)
 
-  // Búsqueda
+  // Búsqueda y filtros
   const [searchActive, setSearchActive] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'todos' | BudgetStatus>('todos')
   const searchRef = useRef<HTMLInputElement>(null)
 
   // Carpetas UI
@@ -307,8 +308,12 @@ export default function DashboardPage() {
     if (searchActive) searchRef.current?.focus()
   }, [searchActive])
 
+  const displayBudgets = statusFilter === 'todos'
+    ? budgets
+    : budgets.filter(b => b.status === statusFilter)
+
   const filteredBudgets = searchQuery.trim()
-    ? budgets.filter(b => {
+    ? displayBudgets.filter(b => {
         const q = searchQuery.toLowerCase()
         const folder = folders.find(f => f.id === b.folder_id)
         return (
@@ -444,7 +449,7 @@ export default function DashboardPage() {
   const isTrial = subscriptionStatus === 'trial'
   const hasSubscription = ['trialing', 'active', 'past_due'].includes(subscriptionStatus)
   const activeBudget = activeId ? budgets.find(b => b.id === activeId) : null
-  const unfolderedBudgets = budgets.filter(b => !b.folder_id)
+  const unfolderedBudgets = displayBudgets.filter(b => !b.folder_id)
 
   return (
     <main
@@ -575,6 +580,40 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {/* Filtro por estado */}
+        {!searchActive && budgets.length > 0 && (() => {
+          const counts = budgets.reduce((acc, b) => {
+            acc[b.status] = (acc[b.status] ?? 0) + 1
+            return acc
+          }, {} as Partial<Record<BudgetStatus, number>>)
+          const visibleStatuses = ALL_STATUSES.filter(s => (counts[s] ?? 0) > 0)
+          if (visibleStatuses.length <= 1) return null
+          return (
+            <div className="flex items-center gap-2 overflow-x-auto">
+              <button type="button"
+                onClick={() => setStatusFilter('todos')}
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                  statusFilter === 'todos'
+                    ? 'bg-[#0D1B2A] dark:bg-[#F4F6F9] text-white dark:text-[#0D1B2A]'
+                    : 'bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9]'
+                }`}>
+                Todos ({budgets.length})
+              </button>
+              {visibleStatuses.map(s => (
+                <button key={s} type="button"
+                  onClick={() => setStatusFilter(s)}
+                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                    statusFilter === s
+                      ? 'bg-[#0D1B2A] dark:bg-[#F4F6F9] text-white dark:text-[#0D1B2A]'
+                      : 'bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9]'
+                  }`}>
+                  {STATUS_LABELS[s]} ({counts[s]})
+                </button>
+              ))}
+            </div>
+          )
+        })()}
+
         {/* Banner miembro de equipo */}
         {ownerEmail && (
           <div className="rounded-[10px] bg-[#EDF0F4] dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] px-4 py-2.5 flex items-center gap-2">
@@ -668,11 +707,7 @@ export default function DashboardPage() {
                         <div className="min-w-0 space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs font-medium text-[#A9B5C2]">#{b.budget_number}</span>
-                            <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                              b.status === 'sent' ? 'bg-[#1FB57A]/15 text-[#1FB57A]' : 'bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#6B7B8C] dark:text-[#A9B5C2]'
-                            }`}>
-                              {b.status === 'sent' ? 'Enviado' : 'Borrador'}
-                            </span>
+                            <StatusBadge status={b.status} />
                             {folder && (
                               <span className="inline-flex items-center gap-1 text-xs text-[#6B7B8C] dark:text-[#A9B5C2]">
                                 <FolderIcon color={folder.color} size={12} />
@@ -755,7 +790,7 @@ export default function DashboardPage() {
 
               {/* Presupuestos de carpetas expandidas */}
               {folders.filter(f => expandedFolderIds.has(f.id)).map(folder => {
-                const fBudgets = budgets.filter(b => b.folder_id === folder.id)
+                const fBudgets = displayBudgets.filter(b => b.folder_id === folder.id)
                 return (
                   <div key={folder.id} className="space-y-2">
                     <div className="flex items-center gap-2">
