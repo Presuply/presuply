@@ -14,6 +14,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [forgotMode, setForgotMode] = useState(false)
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
@@ -21,6 +25,17 @@ export default function LoginPage() {
       if (session) router.replace('/dashboard')
     })
   }, [router])
+
+  async function handleReset(e: React.FormEvent) {
+    e.preventDefault()
+    setResetLoading(true)
+    const supabase = createClient()
+    await supabase.auth.resetPasswordForEmail(resetEmail, {
+      redirectTo: 'https://presuply.app/reset-password',
+    })
+    setResetLoading(false)
+    setResetSent(true)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -52,28 +67,65 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] shadow-sm p-6">
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="tu@email.com" required autoFocus className={ic} />
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              placeholder="Contraseña" required className={ic} />
-            <button type="submit" disabled={loading} className={bp}>
-              {loading ? 'Entrando...' : 'Iniciar sesión'}
-            </button>
-            {error && (
-              <p role="alert" className="rounded-[8px] bg-red-50 dark:bg-red-900/20 border border-[#E5484D]/40 px-4 py-3 text-sm text-[#E5484D]">
-                {error}
-              </p>
-            )}
-          </form>
+          {forgotMode ? (
+            resetSent ? (
+              <div className="space-y-3">
+                <p className="rounded-[8px] bg-green-50 dark:bg-green-900/20 border border-[#1FB57A]/40 px-4 py-3 text-sm text-[#1FB57A]">
+                  Si existe una cuenta con ese email, recibirás el enlace de recuperación en unos minutos. Revisa también la carpeta de spam.
+                </p>
+                <button type="button" onClick={() => { setForgotMode(false); setResetSent(false) }}
+                  className="w-full text-sm text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] py-2 transition-colors">
+                  Volver al login
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleReset} className="space-y-3">
+                <p className="text-sm text-[#6B7B8C] dark:text-[#A9B5C2]">
+                  Introduce tu email y te enviaremos un enlace para restablecer tu contraseña.
+                </p>
+                <input type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)}
+                  placeholder="tu@email.com" required autoFocus className={ic} />
+                <button type="submit" disabled={resetLoading} className={bp}>
+                  {resetLoading ? 'Enviando...' : 'Enviar enlace de recuperación'}
+                </button>
+                <button type="button" onClick={() => setForgotMode(false)}
+                  className="w-full text-sm text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] py-2 transition-colors">
+                  Volver al login
+                </button>
+              </form>
+            )
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="tu@email.com" required autoFocus className={ic} />
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                placeholder="Contraseña" required className={ic} />
+              <div className="text-right">
+                <button type="button" onClick={() => { setForgotMode(true); setResetEmail(email) }}
+                  className="text-xs text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#FF6A00] transition-colors">
+                  ¿Olvidaste tu contraseña?
+                </button>
+              </div>
+              <button type="submit" disabled={loading} className={bp}>
+                {loading ? 'Entrando...' : 'Iniciar sesión'}
+              </button>
+              {error && (
+                <p role="alert" className="rounded-[8px] bg-red-50 dark:bg-red-900/20 border border-[#E5484D]/40 px-4 py-3 text-sm text-[#E5484D]">
+                  {error}
+                </p>
+              )}
+            </form>
+          )}
         </div>
 
-        <p className="text-center text-sm text-[#6B7B8C] dark:text-[#A9B5C2]">
-          ¿No tienes cuenta?{' '}
-          <a href="/register" className="font-semibold text-[#FF6A00] hover:text-[#FF9248]">
-            Regístrate
-          </a>
-        </p>
+        {!forgotMode && (
+          <p className="text-center text-sm text-[#6B7B8C] dark:text-[#A9B5C2]">
+            ¿No tienes cuenta?{' '}
+            <a href="/register" className="font-semibold text-[#FF6A00] hover:text-[#FF9248]">
+              Regístrate
+            </a>
+          </p>
+        )}
 
       </div>
       </div>
