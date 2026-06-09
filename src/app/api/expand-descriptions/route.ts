@@ -7,23 +7,65 @@ import { createClient } from '@/lib/supabase/server'
 const MODEL = 'claude-sonnet-4-6'
 
 const SYSTEM_PROMPT = `Eres un experto en presupuestos de construcción y reformas en España.
-Recibes un array JSON de partidas de presupuesto con descripciones cortas escritas por un profesional.
+Recibes la descripción breve de una partida de presupuesto escrita por un profesional.
 
-Para cada partida genera:
+Genera:
 1. Un título corto y descriptivo (máx. 60 caracteres), que resuma la partida con precisión.
-2. Una descripción extendida profesional y técnica (3-6 líneas) que incluya:
-   materiales específicos con características técnicas, proceso de ejecución paso a paso,
-   acabados y calidades, y cualquier detalle relevante para un presupuesto formal en España.
+2. Una descripción extendida profesional y técnica. Máximo 4 líneas (no más de 400 caracteres). Sé conciso y técnico. Incluye materiales con características técnicas, proceso de ejecución y acabados.
 
-Devuelve SOLO un array JSON en el mismo orden que la entrada, sin texto adicional:
-[{ "titulo": "...", "descripcion_extendida": "..." }, ...]
+Devuelve SOLO JSON, sin texto adicional:
+{ "titulo": "...", "descripcion_extendida": "..." }
 
-REGLAS ESTRICTAS:
-- Mantén el mismo número de elementos que la entrada, en el mismo orden.
+REGLAS:
 - No inventes materiales o procesos que contradigan la descripción original.
-- Si la descripción original ya es técnica, expándela con más detalle, no la simplificues.
-- Las unidades de medida y cantidades nunca se mencionan en el texto (van en otros campos).
+- Las unidades de medida y cantidades nunca se mencionan en el texto.
 - Todo en español, con vocabulario técnico de la construcción.`
+
+// ── Expande una sola partida — falla silenciosamente con valores vacíos ──────
+
+async function expandSingle(
+  anthropic: Anthropic,
+  item: { id: string; description: string },
+): Promise<{ titulo: string; descripcion_extendida: string }> {
+  try {
+    const response = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 512,
+      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+      messages: [{
+        role: 'user',
+        content: `Expande esta partida: ${item.description}`,
+      }],
+    })
+
+    const rawText = response.content[0]?.type === 'text' ? response.content[0].text : ''
+    let cleaned = ''
+    try {
+      cleaned = rawText
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim()
+      const firstBrace = cleaned.indexOf('{')
+      if (firstBrace !== -1) cleaned = cleaned.slice(firstBrace)
+      const lastBrace = cleaned.lastIndexOf('}')
+      if (lastBrace !== -1) cleaned = cleaned.slice(0, lastBrace + 1)
+      const parsed = JSON.parse(cleaned) as { titulo?: string; descripcion_extendida?: string }
+      return {
+        titulo: String(parsed.titulo ?? '').slice(0, 60),
+        descripcion_extendida: String(parsed.descripcion_extendida ?? ''),
+      }
+    } catch (parseErr) {
+      console.error(`Expand parse error [${item.id}]:`, parseErr instanceof Error ? parseErr.message : String(parseErr))
+      console.error('Cleaned:', cleaned.slice(0, 300))
+      return { titulo: '', descripcion_extendida: '' }
+    }
+  } catch (err) {
+    console.error(`Expand API error [${item.id}]:`, err)
+    return { titulo: '', descripcion_extendida: '' }
+  }
+}
+
+// ── Handler principal ─────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
   try {
@@ -41,7 +83,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'budgetId e items requeridos' }, { status: 400 })
     }
 
-    // Verificar que el presupuesto pertenece al usuario
     const { data: budget } = await supabase
       .from('budgets')
       .select('id')
@@ -53,50 +94,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Presupuesto no encontrado' }, { status: 404 })
     }
 
-    // Llamar a Sonnet con todos los items en una sola llamada
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-    const input = items.map(i => ({ id: i.id, descripcion: i.description }))
+    // Una llamada por partida, en batches de 5 en paralelo
+    const BATCH_SIZE = 5
+    const expanded: Array<{ titulo: string; descripcion_extendida: string }> = new Array(items.length)
 
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 4096,
-      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      messages: [{
-        role: 'user',
-        content: `Expande estas partidas de presupuesto:\n${JSON.stringify(input, null, 2)}`,
-      }],
-    })
-
-    const rawText = response.content[0]?.type === 'text' ? response.content[0].text : ''
-
-    let expanded: Array<{ titulo: string; descripcion_extendida: string }>
-    let cleaned = ''
-    try {
-      cleaned = rawText
-        .replace(/```json/gi, '')
-        .replace(/```/g, '')
-        .trim()
-      const firstBracket = cleaned.indexOf('[')
-      if (firstBracket !== -1) cleaned = cleaned.slice(firstBracket)
-      const lastBracket = cleaned.lastIndexOf(']')
-      if (lastBracket !== -1) cleaned = cleaned.slice(0, lastBracket + 1)
-      expanded = JSON.parse(cleaned)
-    } catch (parseErr) {
-      console.error('Expand parse error:', parseErr instanceof Error ? parseErr.message : String(parseErr))
-      console.error('Cleaned:', cleaned.slice(0, 500))
-      console.error('Raw:', rawText)
-      return NextResponse.json(
-        { error: 'No se pudo parsear la respuesta de IA', raw: rawText },
-        { status: 422 }
-      )
-    }
-
-    if (!Array.isArray(expanded) || expanded.length !== items.length) {
-      return NextResponse.json(
-        { error: 'La respuesta de IA no tiene el formato esperado' },
-        { status: 422 }
-      )
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const batch = items.slice(i, i + BATCH_SIZE)
+      const results = await Promise.all(batch.map(item => expandSingle(anthropic, item)))
+      results.forEach((r, j) => { expanded[i + j] = r })
     }
 
     // Guardar en DB y construir respuesta
@@ -105,28 +112,17 @@ export async function POST(request: Request) {
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
       const exp = expanded[i]
-      const titulo = (exp?.titulo ?? '').slice(0, 60)
-      const descripcion = exp?.descripcion_extendida ?? ''
 
       await supabase
         .from('line_items')
-        .update({ titulo_partida: titulo || null, descripcion_extendida: descripcion || null })
+        .update({ titulo_partida: exp.titulo || null, descripcion_extendida: exp.descripcion_extendida || null })
         .eq('id', item.id)
         .eq('budget_id', budgetId)
 
-      result.push({ id: item.id, titulo_partida: titulo, descripcion_extendida: descripcion })
+      result.push({ id: item.id, titulo_partida: exp.titulo, descripcion_extendida: exp.descripcion_extendida })
     }
 
-    const usage = response.usage as Anthropic.Usage & {
-      cache_creation_input_tokens?: number
-      cache_read_input_tokens?: number
-    }
-    console.log('Expand descriptions tokens:', JSON.stringify({
-      input: usage.input_tokens,
-      output: usage.output_tokens,
-      cache_creation: usage.cache_creation_input_tokens ?? 0,
-      cache_read: usage.cache_read_input_tokens ?? 0,
-    }))
+    console.log(`Expand descriptions: ${items.length} partidas procesadas`)
 
     return NextResponse.json({ items: result })
 
