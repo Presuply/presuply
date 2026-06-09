@@ -495,10 +495,11 @@ export default function PresupuestoEditorPage() {
         expand_descriptions: b.expand_descriptions ?? true,
       })
 
-      const [{ data: rawChapters }, { data: rawItems }] = await Promise.all([
+      const [{ data: rawChapters }, { data: rawItems, error: itemsError }] = await Promise.all([
         supabase.from('chapters').select('*').eq('budget_id', id).order('position'),
         supabase.from('line_items').select('id, chapter_id, description, unit, quantity, unit_price, total, confidence, position, descripcion_extendida, titulo_partida, created_at').eq('budget_id', id).order('position'),
       ])
+      if (itemsError) console.error('Error cargando line_items:', itemsError)
 
       const existingChapters = rawChapters ?? []
       const existingItems = rawItems ?? []
