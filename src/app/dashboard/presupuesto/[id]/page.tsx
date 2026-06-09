@@ -442,6 +442,14 @@ export default function PresupuestoEditorPage() {
   const [lineItems, setLineItems] = useState<EditableLineItem[]>([])
   const [profileIban, setProfileIban] = useState<string | null>(null)
   const [profileTemplateUrl, setProfileTemplateUrl] = useState<string | null>(null)
+  const [profileCompanyName, setProfileCompanyName] = useState<string | null>(null)
+  const [showSendModal, setShowSendModal] = useState(false)
+  const [sendEmail, setSendEmail] = useState('')
+  const [sendSubject, setSendSubject] = useState('')
+  const [sendMessage, setSendMessage] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const [sendSuccess, setSendSuccess] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
@@ -507,13 +515,16 @@ export default function PresupuestoEditorPage() {
 
       const [{ data: b }, { data: profile }] = await Promise.all([
         supabase.from('budgets').select('*').eq('id', id).single(),
-        supabase.from('profiles').select('iban, template_url').eq('id', user.id).single(),
+        supabase.from('profiles').select('iban, template_url, company_name, full_name').eq('id', user.id).single(),
       ])
       if (!b) { setLoading(false); return }
       if (b.pdf_url) setPdfUrl(b.pdf_url)
       setBudgetStatus((b.status ?? 'borrador') as BudgetStatus)
       setProfileIban(profile?.iban ?? null)
       setProfileTemplateUrl(profile?.template_url ?? null)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pAny = profile as any
+      setProfileCompanyName(pAny?.company_name || pAny?.full_name || null)
 
       setBudget({
         nombre: b.nombre ?? '', client_name: b.client_name ?? '', client_email: b.client_email ?? '',
@@ -811,6 +822,53 @@ export default function PresupuestoEditorPage() {
     setBudgetStatus(newStatus)
     const supabase = createClient()
     await supabase.from('budgets').update({ status: newStatus }).eq('id', id)
+  }
+
+  // ── Enviar al cliente ─────────────────────────────────────────────────────
+  function openSendModal() {
+    const ref = budget.invoice_number || `#${budget.budget_number}`
+    const clientLabel = budget.nombre || budget.client_name || `Presupuesto ${ref}`
+    const senderName = profileCompanyName ?? ''
+    setSendEmail(budget.client_email || '')
+    setSendSubject(`Presupuesto ${ref} — ${clientLabel}`)
+    setSendMessage(
+      `Estimado/a ${budget.client_name || 'cliente'},\n\n` +
+      `Le hacemos llegar el presupuesto ${ref} para su revisión y aprobación.\n\n` +
+      `Quedamos a su disposición para cualquier aclaración.\n\n` +
+      `Un saludo,\n${senderName}`
+    )
+    setSendError(null)
+    setSendSuccess(false)
+    setShowSendModal(true)
+  }
+
+  async function handleSend() {
+    if (!sendEmail.trim()) { setSendError('El email del cliente es obligatorio'); return }
+    setSending(true)
+    setSendError(null)
+    try {
+      const res = await fetch('/api/send-budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          budgetId: id, clientEmail: sendEmail.trim(),
+          subject: sendSubject, message: sendMessage,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        setSendError(data.error || 'Error al enviar el email. Inténtalo de nuevo.')
+        return
+      }
+      setBudgetStatus('enviado')
+      setShowSendModal(false)
+      setSendSuccess(true)
+      setTimeout(() => setSendSuccess(false), 3000)
+    } catch {
+      setSendError('Error de conexión. Inténtalo de nuevo.')
+    } finally {
+      setSending(false)
+    }
   }
 
   // ── Guardado ─────────────────────────────────────────────────────────────
@@ -1326,6 +1384,13 @@ export default function PresupuestoEditorPage() {
           {dirty && <span className="text-xs text-[#A9B5C2] shrink-0">Sin guardar</span>}
         </div>
         <div className="hidden sm:flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={openSendModal}
+            className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium transition-colors"
+          >
+            Enviar al cliente
+          </button>
           <div className="relative">
             <LoadingButton
               loading={saving}
@@ -1692,6 +1757,12 @@ export default function PresupuestoEditorPage() {
           </div>
         </section>
 
+        {sendSuccess && (
+          <div role="status" className="rounded-[8px] bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+            Presupuesto enviado correctamente. El estado se ha actualizado a &ldquo;Enviado&rdquo;.
+          </div>
+        )}
+
         {saveError && (
           <p role="alert" className="rounded-[8px] bg-red-50 dark:bg-red-900/20 border border-[#E5484D]/40 px-4 py-3 text-sm text-[#E5484D]">
             {saveError}
@@ -1731,6 +1802,13 @@ export default function PresupuestoEditorPage() {
           >
             {pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
           </LoadingButton>
+          <button
+            type="button"
+            onClick={openSendModal}
+            className="w-full border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-semibold rounded-[8px] px-4 py-4 text-base transition-colors"
+          >
+            Enviar al cliente
+          </button>
           {!hasExtendedDescriptions && (
             <p className="text-xs text-[#A9B5C2] text-center">
               Genera el presupuesto primero para obtener descripciones profesionales
@@ -1883,6 +1961,50 @@ export default function PresupuestoEditorPage() {
                   Cancelar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: enviar al cliente */}
+      {showSendModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white dark:bg-[#1B2A3A] rounded-[12px] p-6 max-w-lg w-full space-y-4 shadow-xl">
+            <h3 className="font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">Enviar al cliente</h3>
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Email del cliente</label>
+              <input type="email" value={sendEmail}
+                onChange={e => setSendEmail(e.target.value)}
+                placeholder="cliente@email.com"
+                className={inputClass} />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Asunto</label>
+              <input type="text" value={sendSubject}
+                onChange={e => setSendSubject(e.target.value)}
+                className={inputClass} />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Mensaje</label>
+              <textarea rows={6} value={sendMessage}
+                onChange={e => setSendMessage(e.target.value)}
+                className={`${inputClass} resize-y`} />
+            </div>
+            <p className="text-xs text-[#A9B5C2]">
+              Se adjuntará el PDF del presupuesto. El email se enviará desde contacto@presuply.app en nombre de tu empresa.
+            </p>
+            {sendError && (
+              <p role="alert" className="text-sm text-[#E5484D]">{sendError}</p>
+            )}
+            <div className="flex flex-col gap-2">
+              <button type="button" onClick={handleSend} disabled={sending}
+                className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm disabled:opacity-40 transition-colors">
+                {sending ? 'Enviando...' : 'Enviar'}
+              </button>
+              <button type="button" onClick={() => setShowSendModal(false)} disabled={sending}
+                className="w-full bg-[#F4F6F9] dark:bg-[#0D1B2A] text-[#6B7B8C] dark:text-[#A9B5C2] hover:bg-[#D5DCE4] dark:hover:bg-[#3A4A5C] font-semibold rounded-[8px] px-4 py-2.5 text-sm disabled:opacity-40 transition-colors">
+                Cancelar
+              </button>
             </div>
           </div>
         </div>
