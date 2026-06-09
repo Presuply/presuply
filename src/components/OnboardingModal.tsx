@@ -10,8 +10,8 @@ const STEPS = [
         <circle cx="12" cy="13" r="4" />
       </svg>
     ),
-    title: 'Sube el trabajo',
-    description: 'Haz una foto a tu libreta, pega un mensaje de WhatsApp o adjunta un PDF con el trabajo a presupuestar.',
+    title: 'Sube tu documentación',
+    description: 'Sube fotos de la obra, mensajes de WhatsApp o PDFs. La IA extrae automáticamente todas las partidas.',
   },
   {
     icon: (
@@ -19,8 +19,8 @@ const STEPS = [
         <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
       </svg>
     ),
-    title: 'La IA lo analiza',
-    description: 'Presuply extrae automáticamente las partidas, cantidades y precios. En segundos tienes el presupuesto estructurado.',
+    title: 'Genera tu presupuesto profesional',
+    description: 'Convierte las partidas en descripciones técnicas profesionales con un solo clic. Edita cada partida a tu gusto antes de generar el PDF.',
   },
   {
     icon: (
@@ -32,8 +32,8 @@ const STEPS = [
         <polyline points="10 9 9 9 8 9" />
       </svg>
     ),
-    title: 'Genera tu PDF profesional',
-    description: 'Edita partidas, ajusta precios y genera un PDF listo para enviar al cliente, con tu logo y datos de empresa.',
+    title: 'Exporta en el formato que necesites',
+    description: 'Genera un PDF profesional, exporta a Excel, CSV o formato BC3 para Presto y TCQ. Todo desde el mismo sitio.',
   },
 ]
 

@@ -304,7 +304,7 @@ export default function PerfilPage() {
 
   // Nombre del archivo de plantilla para mostrar al usuario
   const { activeId: tooltipId, markSeen, skipAll: skipTour } =
-    usePageTooltips(['perf_sub', 'perf_team'])
+    usePageTooltips(['perf_sub', 'perf_team', 'perf_template'])
 
   const templateDisplayName = templateFile?.name
     ?? (profile.template_url ? profile.template_url.split('/').pop() : null)
@@ -358,7 +358,16 @@ export default function PerfilPage() {
 
         {/* Plantilla */}
         <section className={`${sec} !space-y-3`}>
-          <h2 className={secTitle}>Plantilla de presupuesto</h2>
+          <div className="relative inline-block">
+            <h2 className={secTitle}>Plantilla de presupuesto</h2>
+            <Tooltip
+              content="Sube una plantilla de referencia y la IA aprenderá tu estilo para generar siempre presupuestos consistentes"
+              placement="right"
+              isActive={tooltipId === 'perf_template'}
+              onDismiss={() => markSeen('perf_template')}
+              onSkipAll={skipTour}
+            />
+          </div>
           <p className="text-xs text-[#6B7B8C] dark:text-[#A9B5C2]">
             Sube una foto o PDF de tu presupuesto actual. Claude analizará tu estilo y lo aplicará a todas las extracciones futuras.
           </p>
@@ -498,7 +507,7 @@ export default function PerfilPage() {
               <div className="relative inline-block">
                 <h2 className={secTitle}>Mi suscripción</h2>
                 <Tooltip
-                  content="Gestiona tu plan o cancela cuando quieras"
+                  content="Gestiona tu plan, cancela o cambia de suscripción cuando quieras"
                   placement="right"
                   isActive={tooltipId === 'perf_sub'}
                   onDismiss={() => markSeen('perf_sub')}

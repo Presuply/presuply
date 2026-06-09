@@ -252,7 +252,7 @@ export default function NuevoPresupuestoPage() {
               )}
             </label>
             <Tooltip
-              content="Sube una foto, WhatsApp o PDF con el trabajo a presupuestar"
+              content="Sube fotos, PDFs o pega texto de WhatsApp. Puedes combinar varios archivos a la vez"
               placement="bottom"
               isActive={tooltipId === 'new_upload'}
               onDismiss={() => markSeen('new_upload')}
@@ -335,7 +335,7 @@ export default function NuevoPresupuestoPage() {
             {extracting ? 'Analizando con IA...' : 'Generar presupuesto'}
           </button>
           <Tooltip
-            content="Claude extraerá las partidas automáticamente en segundos"
+            content="Claude analizará todo y extraerá las partidas automáticamente"
             placement="top"
             isActive={tooltipId === 'new_ai'}
             onDismiss={() => markSeen('new_ai')}

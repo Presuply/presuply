@@ -114,6 +114,9 @@ function SortableRow({
   onUpdate,
   onDelete,
   onEditExtended,
+  showExtendedTooltip,
+  onExtendedTooltipDismiss,
+  onExtendedTooltipSkipAll,
 }: {
   item: EditableLineItem
   chIdx: number
@@ -121,6 +124,9 @@ function SortableRow({
   onUpdate: (id: string, field: keyof EditableLineItem, value: string | number | null) => void
   onDelete: (id: string) => void
   onEditExtended: (itemId: string) => void
+  showExtendedTooltip: boolean
+  onExtendedTooltipDismiss: () => void
+  onExtendedTooltipSkipAll: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id })
@@ -175,14 +181,23 @@ function SortableRow({
       <td className="px-2 py-2">
         <div className="flex items-center gap-0.5">
           {item.descripcion_extendida && (
-            <button
-              type="button"
-              onClick={() => onEditExtended(item.id)}
-              aria-label="Editar descripción extendida"
-              className="flex items-center justify-center w-6 h-6 rounded-full text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors text-xs"
-            >
-              ✎
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => onEditExtended(item.id)}
+                aria-label="Editar descripción extendida"
+                className="flex items-center justify-center w-6 h-6 rounded-full text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors text-xs"
+              >
+                ✎
+              </button>
+              <Tooltip
+                content="Edita el título y la descripción técnica de esta partida antes de generar el PDF"
+                placement="left"
+                isActive={showExtendedTooltip}
+                onDismiss={onExtendedTooltipDismiss}
+                onSkipAll={onExtendedTooltipSkipAll}
+              />
+            </div>
           )}
           <button type="button" onClick={() => onDelete(item.id)} aria-label="Eliminar partida"
             className="flex items-center justify-center w-6 h-6 rounded-full text-[#A9B5C2] hover:text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
@@ -212,6 +227,10 @@ function ChapterSection({
   onUpdateItem,
   onDeleteItem,
   onEditExtended,
+  firstExtendedItemId,
+  extendedTooltipActive,
+  onExtendedTooltipDismiss,
+  onExtendedTooltipSkipAll,
   dragListeners,
 }: {
   chapter: EditableChapter
@@ -229,6 +248,10 @@ function ChapterSection({
   onUpdateItem: (id: string, field: keyof EditableLineItem, value: string | number | null) => void
   onDeleteItem: (id: string) => void
   onEditExtended: (itemId: string) => void
+  firstExtendedItemId: string | null
+  extendedTooltipActive: boolean
+  onExtendedTooltipDismiss: () => void
+  onExtendedTooltipSkipAll: () => void
   dragListeners?: DraggableSyntheticListeners
 }) {
   const { setNodeRef: setDropRef } = useDroppable({ id: `droppable_${chapter.id}` })
@@ -321,7 +344,11 @@ function ChapterSection({
               <tbody className="divide-y divide-[#D5DCE4] dark:divide-[#3A4A5C]">
                 <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
                   {items.map((item, itemIdx) => (
-                    <SortableRow key={item.id} item={item} chIdx={chIdx} itemIdx={itemIdx} onUpdate={onUpdateItem} onDelete={onDeleteItem} onEditExtended={onEditExtended} />
+                    <SortableRow key={item.id} item={item} chIdx={chIdx} itemIdx={itemIdx} onUpdate={onUpdateItem} onDelete={onDeleteItem} onEditExtended={onEditExtended}
+                      showExtendedTooltip={extendedTooltipActive && firstExtendedItemId === item.id}
+                      onExtendedTooltipDismiss={onExtendedTooltipDismiss}
+                      onExtendedTooltipSkipAll={onExtendedTooltipSkipAll}
+                    />
                   ))}
                 </SortableContext>
               </tbody>
@@ -355,6 +382,10 @@ function SortableChapterSection(props: {
   onUpdateItem: (id: string, field: keyof EditableLineItem, value: string | number | null) => void
   onDeleteItem: (id: string) => void
   onEditExtended: (itemId: string) => void
+  firstExtendedItemId: string | null
+  extendedTooltipActive: boolean
+  onExtendedTooltipDismiss: () => void
+  onExtendedTooltipSkipAll: () => void
 }) {
   const { chapter } = props
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -393,7 +424,7 @@ export default function PresupuestoEditorPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const { activeId: tooltipId, markSeen, skipAll: skipTour } =
-    usePageTooltips(['edit_autosave', 'edit_chapters', 'edit_export'])
+    usePageTooltips(['edit_autosave', 'edit_generate', 'edit_chapters', 'edit_export', 'edit_edit_extended'])
   const [dirty, setDirty] = useState(false)
   const [lastChange, setLastChange] = useState(0)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -1277,23 +1308,32 @@ export default function PresupuestoEditorPage() {
               Guardar borrador
             </LoadingButton>
             <Tooltip
-              content="Tus cambios se guardan solos cada 30 segundos"
+              content="Guarda el borrador con las partidas tal como están, sin procesar"
               placement="bottom-right"
               isActive={tooltipId === 'edit_autosave'}
               onDismiss={() => markSeen('edit_autosave')}
               onSkipAll={skipTour}
             />
           </div>
-          <LoadingButton
-            loading={generatingBudget}
-            onClick={handleGenerateBudget}
-            variant="secondary"
-            messages={["Analizando partidas...", "Generando descripciones técnicas...", "Revisando terminología...", "Aplicando estilo profesional...", "Casi listo..."]}
-            duration={20000}
-            className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors"
-          >
-            ✨ Generar presupuesto
-          </LoadingButton>
+          <div className="relative">
+            <LoadingButton
+              loading={generatingBudget}
+              onClick={handleGenerateBudget}
+              variant="secondary"
+              messages={["Analizando partidas...", "Generando descripciones técnicas...", "Revisando terminología...", "Aplicando estilo profesional...", "Casi listo..."]}
+              duration={20000}
+              className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors"
+            >
+              ✨ Generar presupuesto
+            </LoadingButton>
+            <Tooltip
+              content="Genera descripciones técnicas profesionales con IA para cada partida. Puedes editarlas antes del PDF"
+              placement="bottom-right"
+              isActive={tooltipId === 'edit_generate'}
+              onDismiss={() => markSeen('edit_generate')}
+              onSkipAll={skipTour}
+            />
+          </div>
           <LoadingButton
             loading={generatingPdf}
             onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
@@ -1450,38 +1490,45 @@ export default function PresupuestoEditorPage() {
               items={visibleChapters.map(ch => `chapter:${ch.id}`)}
               strategy={verticalListSortingStrategy}
             >
-              {visibleChapters.map((chapter, chIdx) => {
-                const chItems = visibleItems
-                  .filter(i => i.chapter_id === chapter.id)
-                  .sort((a, b) => a.position - b.position)
-                const chSubtotal = chItems.reduce((s, i) => s + i.total, 0)
-                const isOpen = !collapsedChapterIds.has(chapter.id)
-                return (
-                  <SortableChapterSection
-                    key={chapter.id}
-                    chapter={chapter}
-                    chIdx={chIdx}
-                    items={chItems}
-                    chSubtotal={chSubtotal}
-                    isOnlyChapter={visibleChapters.length === 1}
-                    isOpen={isOpen}
-                    onToggleOpen={() => setCollapsedChapterIds(prev => {
-                      const next = new Set(prev)
-                      if (next.has(chapter.id)) next.delete(chapter.id)
-                      else next.add(chapter.id)
-                      return next
-                    })}
-                    openMenuId={openMenuId}
-                    setOpenMenuId={setOpenMenuId}
-                    onRename={renameChapter}
-                    onDelete={requestDeleteChapter}
-                    onAddItem={addItem}
-                    onUpdateItem={updateItem}
-                    onDeleteItem={deleteItem}
-                    onEditExtended={openExtendedEdit}
-                  />
-                )
-              })}
+              {(() => {
+                const firstExtendedItemId = visibleItems.find(i => i.descripcion_extendida)?.id ?? null
+                return visibleChapters.map((chapter, chIdx) => {
+                  const chItems = visibleItems
+                    .filter(i => i.chapter_id === chapter.id)
+                    .sort((a, b) => a.position - b.position)
+                  const chSubtotal = chItems.reduce((s, i) => s + i.total, 0)
+                  const isOpen = !collapsedChapterIds.has(chapter.id)
+                  return (
+                    <SortableChapterSection
+                      key={chapter.id}
+                      chapter={chapter}
+                      chIdx={chIdx}
+                      items={chItems}
+                      chSubtotal={chSubtotal}
+                      isOnlyChapter={visibleChapters.length === 1}
+                      isOpen={isOpen}
+                      onToggleOpen={() => setCollapsedChapterIds(prev => {
+                        const next = new Set(prev)
+                        if (next.has(chapter.id)) next.delete(chapter.id)
+                        else next.add(chapter.id)
+                        return next
+                      })}
+                      openMenuId={openMenuId}
+                      setOpenMenuId={setOpenMenuId}
+                      onRename={renameChapter}
+                      onDelete={requestDeleteChapter}
+                      onAddItem={addItem}
+                      onUpdateItem={updateItem}
+                      onDeleteItem={deleteItem}
+                      onEditExtended={openExtendedEdit}
+                      firstExtendedItemId={firstExtendedItemId}
+                      extendedTooltipActive={tooltipId === 'edit_edit_extended'}
+                      onExtendedTooltipDismiss={() => markSeen('edit_edit_extended')}
+                      onExtendedTooltipSkipAll={skipTour}
+                    />
+                  )
+                })
+              })()}
             </SortableContext>
           </div>
 
@@ -1686,7 +1733,7 @@ export default function PresupuestoEditorPage() {
               Exportar BC3
             </LoadingButton>
             <Tooltip
-              content="Genera tu PDF profesional, o exporta a Excel/CSV/BC3"
+              content="Exporta a PDF, Excel, CSV o BC3 para Presto y TCQ"
               placement="top-right"
               isActive={tooltipId === 'edit_export'}
               onDismiss={() => markSeen('edit_export')}

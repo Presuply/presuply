@@ -487,7 +487,7 @@ export default function DashboardPage() {
                     </svg>
                   </button>
                   <Tooltip
-                    content="Encuentra cualquier presupuesto al instante"
+                    content="Busca cualquier presupuesto al instante"
                     placement="bottom-right"
                     isActive={!showOnboarding && tooltipId === 'dash_search'}
                     onDismiss={() => markSeen('dash_search')}
@@ -517,7 +517,7 @@ export default function DashboardPage() {
                         + Carpeta
                       </button>
                       <Tooltip
-                        content="Organiza presupuestos por zona o cliente"
+                        content="Organiza tus presupuestos por zona o cliente"
                         placement="bottom-right"
                         isActive={!showOnboarding && tooltipId === 'dash_folder'}
                         onDismiss={() => markSeen('dash_folder')}
@@ -532,7 +532,7 @@ export default function DashboardPage() {
                     + Nuevo
                   </Link>
                   <Tooltip
-                    content="Crea tu primer presupuesto"
+                    content="Crea un nuevo presupuesto subiendo fotos, PDFs o texto de WhatsApp"
                     placement="bottom-right"
                     isActive={!showOnboarding && tooltipId === 'dash_new'}
                     onDismiss={() => markSeen('dash_new')}
