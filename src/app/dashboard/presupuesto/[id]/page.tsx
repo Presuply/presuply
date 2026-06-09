@@ -67,6 +67,7 @@ interface ExtendedDescEdit {
 }
 
 interface BudgetHeader {
+  nombre: string
   client_name: string
   client_email: string
   client_address: string
@@ -451,7 +452,7 @@ export default function PresupuestoEditorPage() {
   const [collapsedChapterIds, setCollapsedChapterIds] = useState<Set<string>>(() => new Set())
 
   const [budget, setBudget] = useState<BudgetHeader>({
-    client_name: '', client_email: '', client_address: '', client_phone: '', client_nif: '',
+    nombre: '', client_name: '', client_email: '', client_address: '', client_phone: '', client_nif: '',
     budget_number: 0, tax_type: 'IGIC', tax_rate: 7, valid_days: 30,
     issued_date: new Date().toISOString().slice(0, 10), invoice_number: '',
     overhead_enabled: false, overhead_rate: 13, profit_enabled: false, profit_rate: 6,
@@ -515,7 +516,7 @@ export default function PresupuestoEditorPage() {
       setProfileTemplateUrl(profile?.template_url ?? null)
 
       setBudget({
-        client_name: b.client_name ?? '', client_email: b.client_email ?? '',
+        nombre: b.nombre ?? '', client_name: b.client_name ?? '', client_email: b.client_email ?? '',
         client_address: b.client_address ?? '', client_phone: b.client_phone ?? '',
         client_nif: b.client_nif ?? '', budget_number: b.budget_number,
         tax_type: (b.tax_type === 'IVA' ? 'IVA' : 'IGIC') as 'IGIC' | 'IVA',
@@ -822,6 +823,7 @@ export default function PresupuestoEditorPage() {
     const { error: budgetErr } = await supabase
       .from('budgets')
       .update({
+        nombre: budget.nombre || null,
         client_name: budget.client_name || null, client_email: budget.client_email || null,
         client_address: budget.client_address || null, client_phone: budget.client_phone || null,
         client_nif: budget.client_nif || null, tax_type: budget.tax_type, tax_rate: budget.tax_rate,
@@ -1394,6 +1396,13 @@ export default function PresupuestoEditorPage() {
           </div>
           {budgetSectionOpen && (
             <div id="budget-details" className="space-y-4">
+              <div className="space-y-1">
+                <label className={lbl}>Nombre del presupuesto</label>
+                <input type="text" value={budget.nombre}
+                  onChange={e => updateBudgetField('nombre', e.target.value)}
+                  placeholder="Ej. Reforma cocina — Urbanización Las Palmas"
+                  className={inputClass} />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className={lbl}>Fecha</label>

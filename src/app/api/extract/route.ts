@@ -379,7 +379,7 @@ export async function POST(request: Request) {
     if (extracted.titulo) {
       await supabase
         .from('budgets')
-        .update({ title: extracted.titulo })
+        .update({ title: extracted.titulo, nombre: extracted.titulo })
         .eq('id', budgetId)
         .eq('user_id', user.id)
         .is('title', null)

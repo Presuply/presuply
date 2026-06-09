@@ -63,12 +63,17 @@ function ColorPicker({ selected, onSelect }: { selected: string; onSelect: (c: s
 
 // ── Fila de presupuesto arrastrable ────────────────────────────────────────
 
-function DraggableBudgetRow({ budget, onDelete, deletingId }: {
+function DraggableBudgetRow({ budget, onDelete, onDuplicate, deletingId, duplicatingId, openMenuId, setOpenMenuId }: {
   budget: Budget
   onDelete: (id: string) => void
+  onDuplicate: (id: string) => void
   deletingId: string | null
+  duplicatingId: string | null
+  openMenuId: string | null
+  setOpenMenuId: (id: string | null) => void
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: budget.id })
+  const menuKey = `brow:${budget.id}`
 
   return (
     <li ref={setNodeRef} style={{ opacity: isDragging ? 0.35 : 1 }} className="flex items-stretch gap-2">
@@ -85,30 +90,51 @@ function DraggableBudgetRow({ budget, onDelete, deletingId }: {
               <span className="text-xs font-medium text-[#A9B5C2]">#{budget.budget_number}</span>
               <StatusBadge status={budget.status} />
             </div>
-            <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">
-              {budget.client_name ?? 'Sin cliente'}
-            </p>
-            <p className="text-xs text-[#A9B5C2]">
-              {budget.issued_date ? fmtDate(budget.issued_date) : '—'}
-            </p>
+            {budget.nombre ? (
+              <>
+                <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{budget.nombre}</p>
+                {budget.client_name && <p className="text-xs text-[#6B7B8C] dark:text-[#A9B5C2] truncate">{budget.client_name}</p>}
+              </>
+            ) : (
+              <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{budget.client_name ?? 'Sin cliente'}</p>
+            )}
+            <p className="text-xs text-[#A9B5C2]">{budget.issued_date ? fmtDate(budget.issued_date) : '—'}</p>
           </div>
           <div className="text-right shrink-0">
             <p className="text-base font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">{fmt(budget.total)} €</p>
           </div>
         </Link>
       </div>
-      <button type="button" onClick={() => onDelete(budget.id)} disabled={deletingId === budget.id}
-        aria-label="Eliminar presupuesto"
-        className="flex items-center justify-center w-12 shrink-0 bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#A9B5C2] hover:text-[#E5484D] hover:border-[#E5484D]/40 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 transition-colors shadow-sm">
-        {deletingId === budget.id ? (
-          <span className="text-xs">...</span>
-        ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-            <path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
-          </svg>
+      <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
+        <button type="button"
+          onClick={() => setOpenMenuId(openMenuId === menuKey ? null : menuKey)}
+          disabled={deletingId === budget.id || duplicatingId === budget.id}
+          aria-label="Opciones del presupuesto"
+          className="flex items-center justify-center w-12 h-full bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] hover:border-[#FF6A00]/50 disabled:opacity-40 transition-colors shadow-sm text-lg">
+          {(deletingId === budget.id || duplicatingId === budget.id) ? <span className="text-xs">...</span> : '⋮'}
+        </button>
+        {openMenuId === menuKey && (
+          <div className="absolute right-0 top-full mt-1 bg-white dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[8px] shadow-lg z-20 min-w-[160px]">
+            <button type="button"
+              onClick={() => { setOpenMenuId(null); onDuplicate(budget.id) }}
+              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] transition-colors rounded-t-[8px]">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              Duplicar
+            </button>
+            <button type="button"
+              onClick={() => { setOpenMenuId(null); onDelete(budget.id) }}
+              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors rounded-b-[8px]">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              </svg>
+              Eliminar
+            </button>
+          </div>
         )}
-      </button>
+      </div>
     </li>
   )
 }
@@ -227,6 +253,7 @@ export default function DashboardPage() {
   const [folders, setFolders] = useState<Folder[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('trial')
   const [budgetsUsed, setBudgetsUsed] = useState(0)
   const [openingPortal, setOpeningPortal] = useState(false)
@@ -317,6 +344,7 @@ export default function DashboardPage() {
         const q = searchQuery.toLowerCase()
         const folder = folders.find(f => f.id === b.folder_id)
         return (
+          (b.nombre ?? '').toLowerCase().includes(q) ||
           (b.client_name ?? '').toLowerCase().includes(q) ||
           String(b.budget_number).includes(q) ||
           (folder?.name ?? '').toLowerCase().includes(q)
@@ -337,6 +365,23 @@ export default function DashboardPage() {
     await supabase.from('budgets').delete().eq('id', budgetId)
     setBudgets(prev => prev.filter(b => b.id !== budgetId))
     setDeletingId(null)
+  }
+
+  async function handleDuplicate(budgetId: string) {
+    setDuplicatingId(budgetId)
+    try {
+      const res = await fetch('/api/duplicate-budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budgetId }),
+      })
+      const data = await res.json()
+      if (res.ok && data.newBudgetId) {
+        router.push(`/dashboard/presupuesto/${data.newBudgetId}`)
+      }
+    } finally {
+      setDuplicatingId(null)
+    }
   }
 
   // ── Carpetas ───────────────────────────────────────────────────────────
@@ -700,6 +745,7 @@ export default function DashboardPage() {
               <ul className="space-y-2">
                 {filteredBudgets.map(b => {
                   const folder = folders.find(f => f.id === b.folder_id)
+                  const menuKey = `search:${b.id}`
                   return (
                     <li key={b.id} className="flex items-stretch gap-2">
                       <Link href={`/dashboard/presupuesto/${b.id}`}
@@ -715,25 +761,50 @@ export default function DashboardPage() {
                               </span>
                             )}
                           </div>
-                          <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">
-                            {b.client_name ?? 'Sin cliente'}
-                          </p>
+                          {b.nombre ? (
+                            <>
+                              <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{b.nombre}</p>
+                              {b.client_name && <p className="text-xs text-[#6B7B8C] dark:text-[#A9B5C2] truncate">{b.client_name}</p>}
+                            </>
+                          ) : (
+                            <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{b.client_name ?? 'Sin cliente'}</p>
+                          )}
                           <p className="text-xs text-[#A9B5C2]">{b.issued_date ? fmtDate(b.issued_date) : '—'}</p>
                         </div>
                         <div className="text-right shrink-0">
                           <p className="text-base font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">{fmt(b.total)} €</p>
                         </div>
                       </Link>
-                      <button type="button" onClick={() => handleDelete(b.id)} disabled={deletingId === b.id}
-                        aria-label="Eliminar presupuesto"
-                        className="flex items-center justify-center w-12 shrink-0 bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#A9B5C2] hover:text-[#E5484D] hover:border-[#E5484D]/40 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 transition-colors shadow-sm">
-                        {deletingId === b.id ? <span className="text-xs">...</span> : (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                            <path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
-                          </svg>
+                      <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
+                        <button type="button"
+                          onClick={() => setOpenMenuId(openMenuId === menuKey ? null : menuKey)}
+                          disabled={deletingId === b.id || duplicatingId === b.id}
+                          aria-label="Opciones del presupuesto"
+                          className="flex items-center justify-center w-12 h-full bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] hover:border-[#FF6A00]/50 disabled:opacity-40 transition-colors shadow-sm text-lg">
+                          {(deletingId === b.id || duplicatingId === b.id) ? <span className="text-xs">...</span> : '⋮'}
+                        </button>
+                        {openMenuId === menuKey && (
+                          <div className="absolute right-0 top-full mt-1 bg-white dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[8px] shadow-lg z-20 min-w-[160px]">
+                            <button type="button"
+                              onClick={() => { setOpenMenuId(null); handleDuplicate(b.id) }}
+                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] transition-colors rounded-t-[8px]">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                              </svg>
+                              Duplicar
+                            </button>
+                            <button type="button"
+                              onClick={() => { setOpenMenuId(null); handleDelete(b.id) }}
+                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors rounded-b-[8px]">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                              </svg>
+                              Eliminar
+                            </button>
+                          </div>
                         )}
-                      </button>
+                      </div>
                     </li>
                   )
                 })}
@@ -803,7 +874,7 @@ export default function DashboardPage() {
                     ) : (
                       <ul className="space-y-2">
                         {fBudgets.map(b => (
-                          <DraggableBudgetRow key={b.id} budget={b} onDelete={handleDelete} deletingId={deletingId} />
+                          <DraggableBudgetRow key={b.id} budget={b} onDelete={handleDelete} onDuplicate={handleDuplicate} deletingId={deletingId} duplicatingId={duplicatingId} openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} />
                         ))}
                       </ul>
                     )}
@@ -820,7 +891,7 @@ export default function DashboardPage() {
                   {unfolderedBudgets.length > 0 ? (
                     <ul className="space-y-2">
                       {unfolderedBudgets.map(b => (
-                        <DraggableBudgetRow key={b.id} budget={b} onDelete={handleDelete} deletingId={deletingId} />
+                        <DraggableBudgetRow key={b.id} budget={b} onDelete={handleDelete} onDuplicate={handleDuplicate} deletingId={deletingId} duplicatingId={duplicatingId} openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} />
                       ))}
                     </ul>
                   ) : folders.length > 0 ? (
@@ -837,7 +908,7 @@ export default function DashboardPage() {
             <DragOverlay>
               {activeBudget && (
                 <div className="bg-white dark:bg-[#1B2A3A] shadow-xl rounded-[12px] border border-[#FF6A00]/40 px-4 py-3 text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] opacity-95 max-w-xs">
-                  ⠿ {activeBudget.client_name ?? `Presupuesto #${activeBudget.budget_number}`}
+                  ⠿ {activeBudget.nombre ?? activeBudget.client_name ?? `Presupuesto #${activeBudget.budget_number}`}
                 </div>
               )}
             </DragOverlay>
