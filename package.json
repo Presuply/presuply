@@ -8,10 +8,19 @@
     "start": "next start",
     "lint": "eslint",
     "import-bcca": "tsx src/scripts/import-bcca.ts",
-    "generate-icons": "tsx src/scripts/generate-icons.ts"
+    "generate-icons": "tsx src/scripts/generate-icons.ts",
+    "cap:add": "cap add android",
+    "cap:sync": "cap sync",
+    "cap:open": "cap open android"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
+    "@capacitor/android": "^8.4.0",
+    "@capacitor/camera": "^8.2.0",
+    "@capacitor/cli": "^8.4.0",
+    "@capacitor/core": "^8.4.0",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/push-notifications": "^8.1.1",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
