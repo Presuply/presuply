@@ -3,6 +3,7 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 const MODEL = 'claude-sonnet-4-6'
 
@@ -19,23 +20,63 @@ Devuelve SOLO JSON, sin texto adicional:
 REGLAS:
 - No inventes materiales o procesos que contradigan la descripción original.
 - Las unidades de medida y cantidades nunca se mencionan en el texto.
-- Todo en español, con vocabulario técnico de la construcción.`
+- Todo en español, con vocabulario técnico de la construcción.
+- Si recibes partidas de referencia de la base de datos BCCA, úsalas como guía técnica y adapta la descripción al contexto específico de la partida.`
+
+interface BccaPartida {
+  codigo: string
+  capitulo: string | null
+  unidad: string | null
+  descripcion: string
+  descripcion_larga: string | null
+  precio_referencia: number | null
+}
+
+async function fetchBccaContext(
+  supabase: SupabaseClient,
+  description: string,
+): Promise<string> {
+  try {
+    const { data } = await supabase
+      .rpc('buscar_partidas_bcca', { query: description, max_results: 3 })
+    const partidas = data as BccaPartida[] | null
+    if (!partidas || partidas.length === 0) return ''
+
+    const lines = partidas.map(p =>
+      `- Código: ${p.codigo}
+  Descripción: ${p.descripcion}${p.descripcion_larga ? `\n  Descripción técnica: ${p.descripcion_larga}` : ''}
+  Unidad: ${p.unidad ?? 'N/D'} | Precio referencia: ${p.precio_referencia != null ? `${p.precio_referencia}€/${p.unidad ?? 'ud'}` : 'N/D'}`
+    ).join('\n')
+
+    return `PARTIDAS DE REFERENCIA DE LA BASE DE DATOS BCCA (úsalas como guía técnica para la descripción extendida):
+${lines}
+
+`
+  } catch {
+    // No abortar si la búsqueda BCCA falla
+    return ''
+  }
+}
 
 // ── Expande una sola partida — falla silenciosamente con valores vacíos ──────
 
 async function expandSingle(
   anthropic: Anthropic,
+  supabase: SupabaseClient,
   item: { id: string; description: string },
 ): Promise<{ titulo: string; descripcion_extendida: string }> {
   try {
+    const contextoRef = await fetchBccaContext(supabase, item.description)
+
+    const userMessage = contextoRef
+      ? `${contextoRef}Expande esta partida: ${item.description}`
+      : `Expande esta partida: ${item.description}`
+
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 512,
       system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      messages: [{
-        role: 'user',
-        content: `Expande esta partida: ${item.description}`,
-      }],
+      messages: [{ role: 'user', content: userMessage }],
     })
 
     const rawText = response.content[0]?.type === 'text' ? response.content[0].text : ''
@@ -102,7 +143,7 @@ export async function POST(request: Request) {
 
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
       const batch = items.slice(i, i + BATCH_SIZE)
-      const results = await Promise.all(batch.map(item => expandSingle(anthropic, item)))
+      const results = await Promise.all(batch.map(item => expandSingle(anthropic, supabase, item)))
       results.forEach((r, j) => { expanded[i + j] = r })
     }
 
