@@ -81,6 +81,7 @@ function fmt(n: number): string {
 const ORANGE = '#FF6A00'
 const NAVY   = '#0D1B2A'
 const LIGHT  = '#F4F6F9'
+const DARK   = '#3c4043'
 const MGRAY  = '#6B7B8C'
 const BORDER = '#D5DCE4'
 const MUTED  = '#9CA3AF'
@@ -115,7 +116,7 @@ const S = StyleSheet.create({
     borderTopColor: BORDER,
     paddingTop: 4,
   },
-  footerText: { fontSize: 7.5, color: MUTED },
+  footerText: { fontSize: 7.5, color: DARK },
 
   // ── Header ──────────────────────────────────────────────────────────────
   header: {
@@ -129,12 +130,12 @@ const S = StyleSheet.create({
   logo: { height: 50, marginBottom: 5 },
 
   companyName:   { fontSize: 11, fontFamily: 'Helvetica-Bold', color: NAVY, marginBottom: 2 },
-  companyDetail: { fontSize: 8, color: MGRAY, marginBottom: 1 },
+  companyDetail: { fontSize: 8, color: DARK, marginBottom: 1 },
 
   budgetLabel: { fontSize: 14, fontFamily: 'Helvetica-Bold', color: NAVY, letterSpacing: 1, marginBottom: 3 },
   budgetRef:   { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: ORANGE, marginBottom: 5 },
-  budgetTitle: { fontSize: 9, color: MGRAY, marginBottom: 5, fontStyle: 'italic' },
-  budgetDetail:{ fontSize: 8, color: MGRAY, marginBottom: 1 },
+  budgetTitle: { fontSize: 9, color: DARK, marginBottom: 5, fontStyle: 'italic' },
+  budgetDetail:{ fontSize: 8, color: DARK, marginBottom: 1 },
 
   // Orange divider
   divider: { height: 2, backgroundColor: ORANGE, marginBottom: 10 },
@@ -146,9 +147,9 @@ const S = StyleSheet.create({
     padding: 8,
     marginBottom: 10,
   },
-  clientTitle:  { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: MGRAY, marginBottom: 4 },
+  clientTitle:  { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: NAVY, marginBottom: 4 },
   clientName:   { fontSize: 9, fontFamily: 'Helvetica-Bold', color: NAVY, marginBottom: 1 },
-  clientDetail: { fontSize: 8, color: MGRAY, marginBottom: 1 },
+  clientDetail: { fontSize: 8, color: DARK, marginBottom: 1 },
 
   // ── Chapter header ───────────────────────────────────────────────────────
   chapterRow: {
@@ -172,7 +173,7 @@ const S = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 4,
   },
-  th: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: MGRAY },
+  th: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: NAVY },
 
   // ── Item row ─────────────────────────────────────────────────────────────
   itemRow: {
@@ -185,8 +186,8 @@ const S = StyleSheet.create({
   },
   itemRowAlt: { backgroundColor: '#FAFAFA' },
 
-  tdNum:   { fontSize: 8, color: MUTED },
-  tdDesc:  { fontSize: 8.5, color: NAVY },
+  tdNum:   { fontSize: 8, color: DARK },
+  tdDesc:  { fontSize: 8.5, color: DARK },
   tdRight: { fontSize: 8.5, color: NAVY, textAlign: 'right' },
 
   // ── Summary ──────────────────────────────────────────────────────────────
@@ -200,21 +201,21 @@ const S = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: BORDER,
   },
-  summaryLabel:      { fontSize: 8.5, color: MGRAY },
+  summaryLabel:      { fontSize: 8.5, color: DARK },
   summaryValue:      { fontSize: 8.5, color: NAVY },
-  summaryRowTotal:   { backgroundColor: NAVY },
-  summaryLabelTotal: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: WHITE },
-  summaryValueTotal: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: WHITE },
+  summaryRowTotal:   { backgroundColor: LIGHT },
+  summaryLabelTotal: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: NAVY },
+  summaryValueTotal: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: NAVY },
 
   // ── IBAN ─────────────────────────────────────────────────────────────────
   ibanBlock: { marginTop: 10, paddingTop: 6, borderTopWidth: 0.5, borderTopColor: BORDER },
-  ibanText:  { fontSize: 8.5, color: MGRAY },
+  ibanText:  { fontSize: 8.5, color: DARK },
 
   // ── Signature ────────────────────────────────────────────────────────────
   signatureBlock: { flexDirection: 'row', marginTop: 24 },
   signatureItem:  { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
   signatureLine:  { width: '100%', height: 0.5, backgroundColor: NAVY, marginTop: 28 },
-  signatureLabel: { fontSize: 8, color: MGRAY, marginTop: 4 },
+  signatureLabel: { fontSize: 8, color: DARK, marginTop: 4 },
 })
 
 // ── Sub-components ─────────────────────────────────────────────────────────
@@ -323,13 +324,12 @@ export default function PresupuestoPDF({
 
           return (
             <View key={chapter.id}>
-              {/* Chapter header + table header + first 2 rows: never orphaned */}
+              {/* Chapter header + table header + first row: never orphaned */}
               <View wrap={false}>
                 <View style={S.chapterRow}>
                   <Text style={S.chapterName}>{chapter.name.toUpperCase()}</Text>
                   <Text style={S.chapterSubtotal}>{fmt(chSubtotal)} €</Text>
                 </View>
-                {/* Table header */}
                 <View style={S.tableHeader}>
                   <Text style={[S.th, { flex: COL.num   }]}>Nº</Text>
                   <Text style={[S.th, { flex: COL.desc  }]}>DESCRIPCIÓN</Text>
@@ -338,16 +338,13 @@ export default function PresupuestoPDF({
                   <Text style={[S.th, { flex: COL.price }, { textAlign: 'right' }]}>P. UNIT.</Text>
                   <Text style={[S.th, { flex: COL.total }, { textAlign: 'right' }]}>TOTAL</Text>
                 </View>
-                {/* First 2 items kept with chapter header */}
-                {items.slice(0, 2).map((item, idx) => (
-                  <ItemRow key={item.id} chIdx={chIdx} itemIdx={idx} item={item} isAlt={idx % 2 === 1} />
-                ))}
+                <ItemRow chIdx={chIdx} itemIdx={0} item={items[0]} isAlt={false} />
               </View>
 
-              {/* Remaining items: each row won't split across pages */}
-              {items.slice(2).map((item, idx) => (
+              {/* Remaining items: each complete row in its own wrap={false} */}
+              {items.slice(1).map((item, idx) => (
                 <View key={item.id} wrap={false}>
-                  <ItemRow chIdx={chIdx} itemIdx={idx + 2} item={item} isAlt={(idx + 2) % 2 === 1} />
+                  <ItemRow chIdx={chIdx} itemIdx={idx + 1} item={item} isAlt={(idx + 1) % 2 === 1} />
                 </View>
               ))}
             </View>
@@ -374,13 +371,11 @@ export default function PresupuestoPDF({
                   <Text style={[S.th, { flex: COL.price }, { textAlign: 'right' }]}>P. UNIT.</Text>
                   <Text style={[S.th, { flex: COL.total }, { textAlign: 'right' }]}>TOTAL</Text>
                 </View>
-                {orphans.slice(0, 2).map((item, idx) => (
-                  <ItemRow key={item.id} chIdx={sortedChapters.length} itemIdx={idx} item={item} isAlt={idx % 2 === 1} />
-                ))}
+                <ItemRow chIdx={sortedChapters.length} itemIdx={0} item={orphans[0]} isAlt={false} />
               </View>
-              {orphans.slice(2).map((item, idx) => (
+              {orphans.slice(1).map((item, idx) => (
                 <View key={item.id} wrap={false}>
-                  <ItemRow chIdx={sortedChapters.length} itemIdx={idx + 2} item={item} isAlt={(idx + 2) % 2 === 1} />
+                  <ItemRow chIdx={sortedChapters.length} itemIdx={idx + 1} item={item} isAlt={(idx + 1) % 2 === 1} />
                 </View>
               ))}
             </View>

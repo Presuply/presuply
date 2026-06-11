@@ -118,10 +118,12 @@ export async function generateBudgetPdf(
       chapter_id: first.chapter_id?.slice(0, 8),
       description: first.description,
       titulo_partida: first.titulo_partida,
-      descripcion_extendida: first.descripcion_extendida,
+      descripcion_extendida: (first.descripcion_extendida ?? '').slice(0, 60),
+      unit: first.unit,
       quantity: first.quantity,
       unit_price: first.unit_price,
       total: first.total,
+      position: first.position,
     }))
   }
   // ──────────────────────────────────────────────────────────────────────────
