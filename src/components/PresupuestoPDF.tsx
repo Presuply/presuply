@@ -10,6 +10,7 @@ export type PDFLineItem = {
   quantity: number
   unit_price: number
   total: number
+  position: number
   descripcion_extendida: string | null
   titulo_partida: string | null
 }
@@ -226,7 +227,7 @@ function ItemRow({
   item: PDFLineItem
   isAlt: boolean
 }) {
-  const displayDesc = item.descripcion_extendida ?? item.description
+  const displayDesc = item.descripcion_extendida || item.description
   return (
     <View style={[S.itemRow, isAlt ? S.itemRowAlt : {}]}>
       <Text style={[S.tdNum,  { flex: COL.num   }]}>{chIdx + 1}.{itemIdx + 1}</Text>
@@ -316,7 +317,7 @@ export default function PresupuestoPDF({
         {sortedChapters.map((chapter, chIdx) => {
           const items = lineItems
             .filter(i => i.chapter_id === chapter.id)
-            .sort((a, b) => a.id.localeCompare(b.id)) // stable order; position not in PDFLineItem
+            .sort((a, b) => a.position - b.position)
           if (items.length === 0) return null
           const chSubtotal = items.reduce((s, i) => s + i.total, 0)
 

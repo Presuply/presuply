@@ -89,6 +89,7 @@ export async function generateBudgetPdf(
       quantity: Number(i.quantity),
       unit_price: Number(i.unit_price),
       total: Number(i.total),
+      position: Number(i.position) || 0,
       descripcion_extendida: (i as { descripcion_extendida?: string | null }).descripcion_extendida ?? null,
       titulo_partida: (i as { titulo_partida?: string | null }).titulo_partida ?? null,
     })) as PDFLineItem[],
@@ -102,6 +103,28 @@ export async function generateBudgetPdf(
     show_signature: !!b.show_signature,
     signedLogoUrl,
   }
+
+  // ── Diagnostic logging ────────────────────────────────────────────────────
+  console.log(`PDF Debug — chapters: ${chapters.length}, items total: ${items.length}`)
+  chapters.forEach(ch => {
+    const chItems = items.filter(i => i.chapter_id === ch.id)
+    console.log(`PDF Debug — chapter "${ch.name}" (${ch.id.slice(0, 8)}…): ${chItems.length} items`)
+  })
+  if (items.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const first = items[0] as any
+    console.log('PDF Debug — first item sample:', JSON.stringify({
+      id: first.id?.slice(0, 8),
+      chapter_id: first.chapter_id?.slice(0, 8),
+      description: first.description,
+      titulo_partida: first.titulo_partida,
+      descripcion_extendida: first.descripcion_extendida,
+      quantity: first.quantity,
+      unit_price: first.unit_price,
+      total: first.total,
+    }))
+  }
+  // ──────────────────────────────────────────────────────────────────────────
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stream = await renderToStream(React.createElement(PresupuestoPDF, pdfProps) as any)
