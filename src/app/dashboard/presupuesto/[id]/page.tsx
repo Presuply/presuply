@@ -156,10 +156,31 @@ function SortableRow({
         {chIdx + 1}.{itemIdx + 1}
       </td>
       <td className="px-2 py-2">
-        <input type="text" value={item.description}
-          onChange={e => onUpdate(item.id, 'description', e.target.value)}
-          placeholder="Descripción"
-          className={`w-full min-w-[140px] ${inlineInput}`} />
+        <div className="flex items-center gap-1.5">
+          {item.descripcion_extendida && (
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => onEditExtended(item.id)}
+                aria-label="Editar descripción IA"
+                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#FF6A00] text-white hover:bg-orange-600 transition-colors leading-none"
+              >
+                IA
+              </button>
+              <Tooltip
+                content="Edita el título y la descripción técnica de esta partida antes de generar el PDF"
+                placement="bottom"
+                isActive={showExtendedTooltip}
+                onDismiss={onExtendedTooltipDismiss}
+                onSkipAll={onExtendedTooltipSkipAll}
+              />
+            </div>
+          )}
+          <input type="text" value={item.description}
+            onChange={e => onUpdate(item.id, 'description', e.target.value)}
+            placeholder="Descripción"
+            className={`flex-1 min-w-[120px] ${inlineInput}`} />
+        </div>
       </td>
       <td className="px-2 py-2">
         <input type="text" value={item.unit}
@@ -181,31 +202,10 @@ function SortableRow({
         {fmt(item.total)} €
       </td>
       <td className="px-2 py-2">
-        <div className="flex items-center gap-0.5">
-          {item.descripcion_extendida && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => onEditExtended(item.id)}
-                aria-label="Editar descripción extendida"
-                className="flex items-center justify-center w-6 h-6 rounded-full text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors text-xs"
-              >
-                ✎
-              </button>
-              <Tooltip
-                content="Edita el título y la descripción técnica de esta partida antes de generar el PDF"
-                placement="left"
-                isActive={showExtendedTooltip}
-                onDismiss={onExtendedTooltipDismiss}
-                onSkipAll={onExtendedTooltipSkipAll}
-              />
-            </div>
-          )}
-          <button type="button" onClick={() => onDelete(item.id)} aria-label="Eliminar partida"
-            className="flex items-center justify-center w-6 h-6 rounded-full text-[#A9B5C2] hover:text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-            ✕
-          </button>
-        </div>
+        <button type="button" onClick={() => onDelete(item.id)} aria-label="Eliminar partida"
+          className="flex items-center justify-center w-6 h-6 rounded-full text-[#A9B5C2] hover:text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+          ✕
+        </button>
       </td>
     </tr>
   )
