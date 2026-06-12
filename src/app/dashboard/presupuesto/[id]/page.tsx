@@ -101,8 +101,23 @@ interface DeleteConfirm {
 const fmt = (n: number) =>
   n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+const fmtDateDisplay = (value: string) => {
+  if (!value) return 'Selecciona una fecha'
+
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return value
+
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return new Intl.DateTimeFormat('es-ES', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date).replace('.', '')
+}
+
 const inputClass =
-  'w-full bg-[#F4F6F9] dark:bg-[#0D1B2A] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] placeholder:text-[#A9B5C2] rounded-[8px] px-3 py-2 text-sm focus:outline-none focus:border-[#FF6A00] transition-colors'
+  'w-full min-w-0 max-w-full bg-[#F4F6F9] dark:bg-[#0D1B2A] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] placeholder:text-[#A9B5C2] rounded-[8px] px-3 py-2 text-sm focus:outline-none focus:border-[#FF6A00] transition-colors'
 
 const inlineInput =
   'bg-transparent text-[#0D1B2A] dark:text-[#F4F6F9] px-1 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#FF6A00] rounded transition-colors'
@@ -455,8 +470,8 @@ export default function PresupuestoEditorPage() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [budgetStatus, setBudgetStatus] = useState<BudgetStatus>('borrador')
   const [statusOpen, setStatusOpen] = useState(false)
-  const [budgetSectionOpen, setBudgetSectionOpen] = useState(true)
-  const [clientSectionOpen, setClientSectionOpen] = useState(true)
+  const [budgetSectionOpen, setBudgetSectionOpen] = useState(false)
+  const [clientSectionOpen, setClientSectionOpen] = useState(false)
   const [collapsedChapterIds, setCollapsedChapterIds] = useState<Set<string>>(() => new Set())
 
   const [budget, setBudget] = useState<BudgetHeader>({
@@ -1471,8 +1486,24 @@ export default function PresupuestoEditorPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1 min-w-0">
                   <label className={lbl}>Fecha</label>
-                  <input type="date" value={budget.issued_date}
-                    onChange={e => updateBudgetField('issued_date', e.target.value)} className={`${inputClass} min-w-0 max-w-full`} />
+                  <div className="relative min-w-0">
+                    <div className={`${inputClass} min-w-0 max-w-full pr-11 flex items-center min-h-[42px]`}>
+                      <span className="block min-w-0 truncate">{fmtDateDisplay(budget.issued_date)}</span>
+                    </div>
+                    <input
+                      type="date"
+                      value={budget.issued_date}
+                      onChange={e => updateBudgetField('issued_date', e.target.value)}
+                      aria-label="Fecha"
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    />
+                    <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[#6B7B8C] dark:text-[#A9B5C2]">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M8 2v3M16 2v3M3 9h18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                        <rect x="3" y="5" width="18" height="16" rx="3" stroke="currentColor" strokeWidth="1.8" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <label className={lbl}>Validez (días)</label>
