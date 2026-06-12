@@ -116,7 +116,7 @@ export default function TerminosPage() {
           <section className="space-y-3">
             <h2 className={h2Class}>7. Inteligencia artificial y limitaciones del servicio</h2>
             <p className={pClass}>
-              Presuply utiliza modelos de inteligencia artificial proporcionados por proveedores externos, en particular Anthropic, PBC («Claude»), para procesar la información introducida por el Usuario y generar borradores de presupuestos. El Usuario reconoce y acepta que:
+              Presuply utiliza modelos de inteligencia artificial proporcionados por proveedores externos, en particular Anthropic, PBC, para procesar la información introducida por el Usuario y generar borradores de presupuestos. El Usuario reconoce y acepta que:
             </p>
             <ul className={ulClass}>
               <li>Los resultados generados por los modelos de inteligencia artificial son aproximaciones y pueden contener errores, omisiones o imprecisiones.</li>
