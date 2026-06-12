@@ -1469,10 +1469,10 @@ export default function PresupuestoEditorPage() {
                   className={inputClass} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
+                <div className="space-y-1 min-w-0">
                   <label className={lbl}>Fecha</label>
                   <input type="date" value={budget.issued_date}
-                    onChange={e => updateBudgetField('issued_date', e.target.value)} className={`${inputClass} min-w-0`} />
+                    onChange={e => updateBudgetField('issued_date', e.target.value)} className={`${inputClass} min-w-0 max-w-full`} />
                 </div>
                 <div className="space-y-1">
                   <label className={lbl}>Validez (días)</label>
