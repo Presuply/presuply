@@ -64,6 +64,12 @@
 }
 
 /* ── Base ── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   background-color: var(--color-bg-app);
   color: var(--color-text);
@@ -78,6 +84,10 @@ h1, h2, h3, h4, h5, h6 {
 /* Clase utilitaria para Syne en elementos no-heading */
 .font-syne {
   font-family: var(--font-display);
+}
+
+input[type="date"] {
+  box-sizing: border-box;
 }
 
 @media (max-width: 640px) {
