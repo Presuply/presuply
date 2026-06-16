@@ -178,11 +178,11 @@ function DroppableFolderCard({
             : 'border-[#D5DCE4] dark:border-[#3A4A5C]'
         }`}
       >
-        <div className="flex items-center overflow-hidden">
+        <div className="flex items-center">
           <button type="button" onClick={onToggle}
             className="flex flex-1 items-center gap-3 px-3 py-3 text-left min-w-0">
             <FolderIcon color={folder.color} size={22} />
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 overflow-hidden">
               {isRenaming ? (
                 <input
                   ref={nameRef}
