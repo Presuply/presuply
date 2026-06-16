@@ -412,7 +412,7 @@ export default function PresupuestoPDF({
               <Text style={[S.summaryValue, { fontFamily: 'Helvetica-Bold' }]}>{fmt(baseImponible)} €</Text>
             </View>
             <View style={S.summaryRow}>
-              <Text style={S.summaryLabel}>{taxType} ({taxRate}%)</Text>
+              <Text style={S.summaryLabel}>{taxRate === 0 ? 'Exento (0%)' : `${taxType} (${taxRate}%)`}</Text>
               <Text style={S.summaryValue}>{fmt(taxAmount)} €</Text>
             </View>
             <View style={[S.summaryRow, S.summaryRowTotal]}>

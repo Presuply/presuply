@@ -218,6 +218,30 @@ export default function PerfilPage() {
     setProfile(prev => ({ ...prev, [field]: value }))
   }
 
+  async function handleDeleteLogo() {
+    if (!userId || !profile.logo_url) return
+    const supabase = createClient()
+    await supabase.storage.from('logos').remove([profile.logo_url])
+    const { error } = await supabase.from('profiles').update({ logo_url: null }).eq('id', userId)
+    if (error) { console.error('Error al eliminar el logo:', error); return }
+    setProfile(prev => ({ ...prev, logo_url: null }))
+    setLogoDisplayUrl(null)
+  }
+
+  async function handleDeleteTemplate() {
+    if (!userId || !profile.template_url) return
+    if (!confirm('¿Eliminar la plantilla? Se perderá el esquema de estilo configurado.')) return
+    const supabase = createClient()
+    await supabase.storage.from('logos').remove([profile.template_url])
+    const { error } = await supabase
+      .from('profiles')
+      .update({ template_url: null, template_schema: null })
+      .eq('id', userId)
+    if (error) { console.error('Error al eliminar la plantilla:', error); return }
+    setProfile(prev => ({ ...prev, template_url: null }))
+    setTemplateSchemaReady(false)
+  }
+
   // Cargar equipo cuando el plan lo permite
   useEffect(() => {
     if (planKey !== 'profesional' && planKey !== 'empresa' && !isTeam) return
@@ -347,9 +371,17 @@ export default function PerfilPage() {
               </div>
             )}
             <div className="space-y-1">
-              <label htmlFor="logo" className={fileBtn}>
-                {logoDisplayUrl ? 'Cambiar logo' : 'Subir logo'}
-              </label>
+              <div className="flex items-center gap-3">
+                <label htmlFor="logo" className={fileBtn}>
+                  {logoDisplayUrl ? 'Cambiar logo' : 'Subir logo'}
+                </label>
+                {profile.logo_url && (
+                  <button type="button" onClick={handleDeleteLogo}
+                    className="text-xs text-[#E5484D] hover:underline transition-colors">
+                    Eliminar logo
+                  </button>
+                )}
+              </div>
               <input id="logo" type="file" accept="image/*" onChange={handleLogoChange} className="sr-only" />
               <p className="text-xs text-[#A9B5C2]">PNG, JPG o SVG. Se verá en el PDF.</p>
             </div>
@@ -411,6 +443,12 @@ export default function PerfilPage() {
           </div>
           {!templateDisplayName && (
             <p className="text-xs text-[#A9B5C2]">JPG, PNG o PDF. Si no subes plantilla, se usará una plantilla estándar.</p>
+          )}
+          {profile.template_url && (
+            <button type="button" onClick={handleDeleteTemplate}
+              className="text-xs text-[#E5484D] hover:underline transition-colors">
+              Eliminar plantilla
+            </button>
           )}
         </section>
 

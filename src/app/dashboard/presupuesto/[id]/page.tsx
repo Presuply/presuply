@@ -1120,7 +1120,7 @@ export default function PresupuestoEditorPage() {
       ...(budget.profit_enabled ? [[`Beneficio industrial ${budget.profit_rate}%`, profit] as [string, number]] : []),
       ...(extras > 0 ? [[budget.extras_description || 'Extras', extras] as [string, number]] : []),
       ['Base imponible', baseImponible],
-      [`${budget.tax_type} ${budget.tax_rate}%`, taxAmount],
+      [budget.tax_rate === 0 ? 'Exento (0%)' : `${budget.tax_type} ${budget.tax_rate}%`, taxAmount],
       ['TOTAL', totalAmount],
     ]
     for (const [label, amount] of summaryLines) {
@@ -1198,7 +1198,7 @@ export default function PresupuestoEditorPage() {
       ...(budget.profit_enabled ? [[`Beneficio industrial ${budget.profit_rate}%`, profit, false] as [string, number, boolean]] : []),
       ...(extras > 0 ? [[budget.extras_description || 'Extras', extras, false] as [string, number, boolean]] : []),
       ['Base imponible', baseImponible, false],
-      [`${budget.tax_type} ${budget.tax_rate}%`, taxAmount, false],
+      [budget.tax_rate === 0 ? 'Exento (0%)' : `${budget.tax_type} ${budget.tax_rate}%`, taxAmount, false],
       ['TOTAL', totalAmount, true],
     ]
     for (const [label, amount, isBold] of summaryLines) {
@@ -1702,11 +1702,15 @@ export default function PresupuestoEditorPage() {
                   <input type="radio" name="tax_type" value={t}
                     checked={budget.tax_type === t} onChange={() => handleTaxTypeChange(t)}
                     className="accent-[#FF6A00]" />
-                  <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">
-                    {t} ({t === 'IGIC' ? '7' : '21'}%)
-                  </span>
+                  <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">{t}</span>
                 </label>
               ))}
+            </div>
+            <div className="flex items-center gap-1 pt-1">
+              <input type="number" value={budget.tax_rate} min={0} max={30} step="0.01"
+                onChange={e => updateBudgetField('tax_rate', Number(e.target.value))}
+                className="w-20 bg-[#F4F6F9] dark:bg-[#0D1B2A] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] rounded-[8px] px-2 py-1.5 text-sm text-right focus:outline-none focus:border-[#FF6A00] transition-colors" />
+              <span className="text-sm text-[#6B7B8C]">% {budget.tax_rate === 0 ? '(Exento)' : ''}</span>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -1780,7 +1784,7 @@ export default function PresupuestoEditorPage() {
               <span>Base imponible</span><span>{fmt(baseImponible)} €</span>
             </div>
             <div className="flex justify-between text-[#6B7B8C] dark:text-[#A9B5C2]">
-              <span>{budget.tax_type} ({budget.tax_rate}%)</span><span>{fmt(taxAmount)} €</span>
+              <span>{budget.tax_rate === 0 ? 'Exento (0%)' : `${budget.tax_type} (${budget.tax_rate}%)`}</span><span>{fmt(taxAmount)} €</span>
             </div>
             <div className="flex justify-between font-bold text-[#0D1B2A] dark:text-[#F4F6F9] text-base pt-2 border-t border-[#D5DCE4] dark:border-[#3A4A5C]">
               <span>Total</span><span>{fmt(totalAmount)} €</span>

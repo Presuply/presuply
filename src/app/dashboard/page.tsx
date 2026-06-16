@@ -144,21 +144,26 @@ function DraggableBudgetRow({ budget, onDelete, onDuplicate, deletingId, duplica
 function DroppableFolderCard({
   folder, count, isExpanded, isRenaming, renameName, setRenameName,
   showColorPicker, openMenuId, setOpenMenuId, setColorPickerFolderId,
-  onToggle, onRenameStart, onRenameConfirm, onColorChange, onDeleteRequest,
+  onToggle, onRenameStart, onRenameConfirm, onRenameCancel, onColorChange, onDeleteRequest,
 }: {
   folder: Folder; count: number; isExpanded: boolean
   isRenaming: boolean; renameName: string; setRenameName: (v: string) => void
   showColorPicker: boolean; openMenuId: string | null
   setOpenMenuId: (id: string | null) => void
   setColorPickerFolderId: (id: string | null) => void
-  onToggle: () => void; onRenameStart: () => void; onRenameConfirm: () => void
+  onToggle: () => void; onRenameStart: () => void; onRenameConfirm: () => void; onRenameCancel: () => void
   onColorChange: (color: string) => void; onDeleteRequest: () => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `folder_${folder.id}` })
   const nameRef = useRef<HTMLInputElement>(null)
+  const confirmedRef = useRef(false)
 
   useEffect(() => {
-    if (isRenaming) { nameRef.current?.focus(); nameRef.current?.select() }
+    if (isRenaming) {
+      confirmedRef.current = false
+      nameRef.current?.focus()
+      nameRef.current?.select()
+    }
   }, [isRenaming])
 
   return (
@@ -184,8 +189,11 @@ function DroppableFolderCard({
                   type="text"
                   value={renameName}
                   onChange={e => setRenameName(e.target.value)}
-                  onBlur={onRenameConfirm}
-                  onKeyDown={e => { if (e.key === 'Enter') onRenameConfirm(); if (e.key === 'Escape') { setRenameName(folder.name); onRenameConfirm() } }}
+                  onBlur={() => { if (!confirmedRef.current) { confirmedRef.current = true; onRenameConfirm() } }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { confirmedRef.current = true; onRenameConfirm() }
+                    if (e.key === 'Escape') { confirmedRef.current = true; setRenameName(folder.name); onRenameCancel() }
+                  }}
                   onClick={e => e.stopPropagation()}
                   className="w-full bg-transparent text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] focus:outline-none focus:ring-1 focus:ring-[#FF6A00] rounded px-1"
                 />
@@ -401,10 +409,19 @@ export default function DashboardPage() {
   }
 
   async function renameFolder(id: string, name: string) {
-    if (!name.trim()) return
+    if (!name.trim()) { setRenamingFolderId(null); return }
     const supabase = createClient()
-    await supabase.from('folders').update({ name: name.trim() }).eq('id', id)
+    const { error } = await supabase.from('folders').update({ name: name.trim() }).eq('id', id)
+    if (error) {
+      console.error('Error al renombrar carpeta:', error)
+      setRenamingFolderId(null)
+      return
+    }
     setFolders(prev => prev.map(f => f.id === id ? { ...f, name: name.trim() } : f))
+    setRenamingFolderId(null)
+  }
+
+  function cancelRename() {
     setRenamingFolderId(null)
   }
 
@@ -848,6 +865,7 @@ export default function DashboardPage() {
                       })}
                       onRenameStart={() => { setRenamingFolderId(folder.id); setRenameName(folder.name); setOpenMenuId(null) }}
                       onRenameConfirm={() => renameFolder(folder.id, renameName || folder.name)}
+                      onRenameCancel={cancelRename}
                       onColorChange={color => changeColor(folder.id, color)}
                       onDeleteRequest={() => {
                         const count = budgets.filter(b => b.folder_id === folder.id).length
