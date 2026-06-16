@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { Confidence } from '@/types/database'
+import type { BudgetStatus, Confidence } from '@/types/database'
 import Tooltip from '@/components/Tooltip'
 import { usePageTooltips } from '@/hooks/usePageTooltips'
+import LoadingButton from '@/components/LoadingButton'
+import StatusBadge from '@/components/StatusBadge'
 import {
   DndContext,
   DragOverlay,
@@ -50,11 +52,22 @@ interface EditableLineItem {
   total: number
   confidence: Confidence | null
   position: number
+  descripcion_extendida: string | null
+  titulo_partida: string | null
   _isNew: boolean
   _deleted: boolean
 }
 
+interface ExtendedDescEdit {
+  itemId: string
+  titulo: string
+  descripcion: string
+  saving: boolean
+  regenerating: boolean
+}
+
 interface BudgetHeader {
+  nombre: string
   client_name: string
   client_email: string
   client_address: string
@@ -88,8 +101,23 @@ interface DeleteConfirm {
 const fmt = (n: number) =>
   n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+const fmtDateDisplay = (value: string) => {
+  if (!value) return 'Selecciona una fecha'
+
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return value
+
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return new Intl.DateTimeFormat('es-ES', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date).replace('.', '')
+}
+
 const inputClass =
-  'w-full bg-[#F4F6F9] dark:bg-[#0D1B2A] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] placeholder:text-[#A9B5C2] rounded-[8px] px-3 py-2 text-sm focus:outline-none focus:border-[#FF6A00] transition-colors'
+  'w-full min-w-0 max-w-full bg-[#F4F6F9] dark:bg-[#0D1B2A] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] placeholder:text-[#A9B5C2] rounded-[8px] px-3 py-2 text-sm focus:outline-none focus:border-[#FF6A00] transition-colors'
 
 const inlineInput =
   'bg-transparent text-[#0D1B2A] dark:text-[#F4F6F9] px-1 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#FF6A00] rounded transition-colors'
@@ -98,12 +126,24 @@ const inlineInput =
 
 function SortableRow({
   item,
+  chIdx,
+  itemIdx,
   onUpdate,
   onDelete,
+  onEditExtended,
+  showExtendedTooltip,
+  onExtendedTooltipDismiss,
+  onExtendedTooltipSkipAll,
 }: {
   item: EditableLineItem
+  chIdx: number
+  itemIdx: number
   onUpdate: (id: string, field: keyof EditableLineItem, value: string | number | null) => void
   onDelete: (id: string) => void
+  onEditExtended: (itemId: string) => void
+  showExtendedTooltip: boolean
+  onExtendedTooltipDismiss: () => void
+  onExtendedTooltipSkipAll: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id })
@@ -127,11 +167,35 @@ function SortableRow({
           ⠿
         </button>
       </td>
+      <td className="px-2 py-2 w-10 text-xs text-[#A9B5C2] whitespace-nowrap tabular-nums select-none">
+        {chIdx + 1}.{itemIdx + 1}
+      </td>
       <td className="px-2 py-2">
-        <input type="text" value={item.description}
-          onChange={e => onUpdate(item.id, 'description', e.target.value)}
-          placeholder="Descripción"
-          className={`w-full min-w-[140px] ${inlineInput}`} />
+        <div className="flex items-center gap-1.5">
+          {item.descripcion_extendida && (
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => onEditExtended(item.id)}
+                aria-label="Editar descripción IA"
+                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#FF6A00] text-white hover:bg-orange-600 transition-colors leading-none"
+              >
+                IA
+              </button>
+              <Tooltip
+                content="Edita el título y la descripción técnica de esta partida antes de generar el PDF"
+                placement="bottom"
+                isActive={showExtendedTooltip}
+                onDismiss={onExtendedTooltipDismiss}
+                onSkipAll={onExtendedTooltipSkipAll}
+              />
+            </div>
+          )}
+          <input type="text" value={item.description}
+            onChange={e => onUpdate(item.id, 'description', e.target.value)}
+            placeholder="Descripción"
+            className={`flex-1 min-w-[120px] ${inlineInput}`} />
+        </div>
       </td>
       <td className="px-2 py-2">
         <input type="text" value={item.unit}
@@ -179,6 +243,11 @@ function ChapterSection({
   onAddItem,
   onUpdateItem,
   onDeleteItem,
+  onEditExtended,
+  firstExtendedItemId,
+  extendedTooltipActive,
+  onExtendedTooltipDismiss,
+  onExtendedTooltipSkipAll,
   dragListeners,
 }: {
   chapter: EditableChapter
@@ -195,6 +264,11 @@ function ChapterSection({
   onAddItem: (chapterId: string) => void
   onUpdateItem: (id: string, field: keyof EditableLineItem, value: string | number | null) => void
   onDeleteItem: (id: string) => void
+  onEditExtended: (itemId: string) => void
+  firstExtendedItemId: string | null
+  extendedTooltipActive: boolean
+  onExtendedTooltipDismiss: () => void
+  onExtendedTooltipSkipAll: () => void
   dragListeners?: DraggableSyntheticListeners
 }) {
   const { setNodeRef: setDropRef } = useDroppable({ id: `droppable_${chapter.id}` })
@@ -275,6 +349,7 @@ function ChapterSection({
               <thead>
                 <tr className="border-b border-[#D5DCE4] dark:border-[#3A4A5C] bg-[#F4F6F9] dark:bg-[#0D1B2A] text-left">
                   <th className="px-2 py-2 w-7" />
+                  <th className="px-2 py-2 w-10 text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Nº</th>
                   <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Descripción</th>
                   <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] whitespace-nowrap">Ud.</th>
                   <th className="px-2 py-2 font-semibold text-[#6B7B8C] dark:text-[#A9B5C2] text-right whitespace-nowrap">Cantidad</th>
@@ -285,8 +360,12 @@ function ChapterSection({
               </thead>
               <tbody className="divide-y divide-[#D5DCE4] dark:divide-[#3A4A5C]">
                 <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
-                  {items.map(item => (
-                    <SortableRow key={item.id} item={item} onUpdate={onUpdateItem} onDelete={onDeleteItem} />
+                  {items.map((item, itemIdx) => (
+                    <SortableRow key={item.id} item={item} chIdx={chIdx} itemIdx={itemIdx} onUpdate={onUpdateItem} onDelete={onDeleteItem} onEditExtended={onEditExtended}
+                      showExtendedTooltip={extendedTooltipActive && firstExtendedItemId === item.id}
+                      onExtendedTooltipDismiss={onExtendedTooltipDismiss}
+                      onExtendedTooltipSkipAll={onExtendedTooltipSkipAll}
+                    />
                   ))}
                 </SortableContext>
               </tbody>
@@ -319,6 +398,11 @@ function SortableChapterSection(props: {
   onAddItem: (chapterId: string) => void
   onUpdateItem: (id: string, field: keyof EditableLineItem, value: string | number | null) => void
   onDeleteItem: (id: string) => void
+  onEditExtended: (itemId: string) => void
+  firstExtendedItemId: string | null
+  extendedTooltipActive: boolean
+  onExtendedTooltipDismiss: () => void
+  onExtendedTooltipSkipAll: () => void
 }) {
   const { chapter } = props
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -357,25 +441,41 @@ export default function PresupuestoEditorPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const { activeId: tooltipId, markSeen, skipAll: skipTour } =
-    usePageTooltips(['edit_autosave', 'edit_chapters', 'edit_export'])
+    usePageTooltips(['edit_autosave', 'edit_generate', 'edit_chapters', 'edit_export', 'edit_edit_extended'])
   const [dirty, setDirty] = useState(false)
   const [lastChange, setLastChange] = useState(0)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [generatingPdf, setGeneratingPdf] = useState(false)
+  const [generatingBudget, setGeneratingBudget] = useState(false)
+  const [generatingBC3, setGeneratingBC3] = useState(false)
+  const [loadingCsv, setLoadingCsv] = useState(false)
+  const [loadingExcel, setLoadingExcel] = useState(false)
+  const [extendedEdit, setExtendedEdit] = useState<ExtendedDescEdit | null>(null)
   const [chapters, setChapters] = useState<EditableChapter[]>([])
   const [lineItems, setLineItems] = useState<EditableLineItem[]>([])
   const [profileIban, setProfileIban] = useState<string | null>(null)
+  const [profileTemplateUrl, setProfileTemplateUrl] = useState<string | null>(null)
+  const [profileCompanyName, setProfileCompanyName] = useState<string | null>(null)
+  const [showSendModal, setShowSendModal] = useState(false)
+  const [sendEmail, setSendEmail] = useState('')
+  const [sendSubject, setSendSubject] = useState('')
+  const [sendMessage, setSendMessage] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const [sendSuccess, setSendSuccess] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
-  const [budgetSectionOpen, setBudgetSectionOpen] = useState(true)
-  const [clientSectionOpen, setClientSectionOpen] = useState(true)
+  const [budgetStatus, setBudgetStatus] = useState<BudgetStatus>('borrador')
+  const [statusOpen, setStatusOpen] = useState(false)
+  const [budgetSectionOpen, setBudgetSectionOpen] = useState(false)
+  const [clientSectionOpen, setClientSectionOpen] = useState(false)
   const [collapsedChapterIds, setCollapsedChapterIds] = useState<Set<string>>(() => new Set())
 
   const [budget, setBudget] = useState<BudgetHeader>({
-    client_name: '', client_email: '', client_address: '', client_phone: '', client_nif: '',
+    nombre: '', client_name: '', client_email: '', client_address: '', client_phone: '', client_nif: '',
     budget_number: 0, tax_type: 'IGIC', tax_rate: 7, valid_days: 30,
     issued_date: new Date().toISOString().slice(0, 10), invoice_number: '',
     overhead_enabled: false, overhead_rate: 13, profit_enabled: false, profit_rate: 6,
@@ -430,14 +530,19 @@ export default function PresupuestoEditorPage() {
 
       const [{ data: b }, { data: profile }] = await Promise.all([
         supabase.from('budgets').select('*').eq('id', id).single(),
-        supabase.from('profiles').select('iban').eq('id', user.id).single(),
+        supabase.from('profiles').select('iban, template_url, company_name, full_name').eq('id', user.id).single(),
       ])
       if (!b) { setLoading(false); return }
       if (b.pdf_url) setPdfUrl(b.pdf_url)
+      setBudgetStatus((b.status ?? 'borrador') as BudgetStatus)
       setProfileIban(profile?.iban ?? null)
+      setProfileTemplateUrl(profile?.template_url ?? null)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pAny = profile as any
+      setProfileCompanyName(pAny?.company_name || pAny?.full_name || null)
 
       setBudget({
-        client_name: b.client_name ?? '', client_email: b.client_email ?? '',
+        nombre: b.nombre ?? '', client_name: b.client_name ?? '', client_email: b.client_email ?? '',
         client_address: b.client_address ?? '', client_phone: b.client_phone ?? '',
         client_nif: b.client_nif ?? '', budget_number: b.budget_number,
         tax_type: (b.tax_type === 'IVA' ? 'IVA' : 'IGIC') as 'IGIC' | 'IVA',
@@ -455,10 +560,11 @@ export default function PresupuestoEditorPage() {
         expand_descriptions: b.expand_descriptions ?? true,
       })
 
-      const [{ data: rawChapters }, { data: rawItems }] = await Promise.all([
+      const [{ data: rawChapters }, { data: rawItems, error: itemsError }] = await Promise.all([
         supabase.from('chapters').select('*').eq('budget_id', id).order('position'),
-        supabase.from('line_items').select('*').eq('budget_id', id).order('position'),
+        supabase.from('line_items').select('id, chapter_id, description, unit, quantity, unit_price, total, confidence, position, descripcion_extendida, titulo_partida, created_at').eq('budget_id', id).order('position'),
       ])
+      if (itemsError) console.error('Error cargando line_items:', itemsError)
 
       const existingChapters = rawChapters ?? []
       const existingItems = rawItems ?? []
@@ -478,7 +584,10 @@ export default function PresupuestoEditorPage() {
             id: item.id, chapter_id: newChapter.id, description: item.description,
             unit: item.unit ?? '', quantity: Number(item.quantity),
             unit_price: Number(item.unit_price), total: Number(item.total),
-            confidence: item.confidence, position: item.position, _isNew: false, _deleted: false,
+            confidence: item.confidence, position: item.position,
+            descripcion_extendida: item.descripcion_extendida ?? null,
+            titulo_partida: item.titulo_partida ?? null,
+            _isNew: false, _deleted: false,
           })))
         }
       } else {
@@ -489,7 +598,10 @@ export default function PresupuestoEditorPage() {
           id: item.id, chapter_id: item.chapter_id ?? null, description: item.description,
           unit: item.unit ?? '', quantity: Number(item.quantity),
           unit_price: Number(item.unit_price), total: Number(item.total),
-          confidence: item.confidence, position: item.position, _isNew: false, _deleted: false,
+          confidence: item.confidence, position: item.position,
+          descripcion_extendida: item.descripcion_extendida ?? null,
+          titulo_partida: item.titulo_partida ?? null,
+          _isNew: false, _deleted: false,
         })))
       }
 
@@ -538,6 +650,7 @@ export default function PresupuestoEditorPage() {
     setLineItems(prev => [...prev, {
       id: `new-${Date.now()}`, chapter_id: chapterId, description: '', unit: '',
       quantity: 1, unit_price: 0, total: 0, confidence: null,
+      descripcion_extendida: null, titulo_partida: null,
       position: maxPos + 1, _isNew: true, _deleted: false,
     }])
     markDirty()
@@ -718,6 +831,61 @@ export default function PresupuestoEditorPage() {
     markDirty()
   }
 
+  // ── Estado del presupuesto ────────────────────────────────────────────────
+  async function handleStatusChange(newStatus: BudgetStatus) {
+    setStatusOpen(false)
+    setBudgetStatus(newStatus)
+    const supabase = createClient()
+    await supabase.from('budgets').update({ status: newStatus }).eq('id', id)
+  }
+
+  // ── Enviar al cliente ─────────────────────────────────────────────────────
+  function openSendModal() {
+    const ref = budget.invoice_number || `#${budget.budget_number}`
+    const clientLabel = budget.nombre || budget.client_name || `Presupuesto ${ref}`
+    const senderName = profileCompanyName ?? ''
+    setSendEmail(budget.client_email || '')
+    setSendSubject(`Presupuesto ${ref} — ${clientLabel}`)
+    setSendMessage(
+      `Estimado/a ${budget.client_name || 'cliente'},\n\n` +
+      `Le hacemos llegar el presupuesto ${ref} para su revisión y aprobación.\n\n` +
+      `Quedamos a su disposición para cualquier aclaración.\n\n` +
+      `Un saludo,\n${senderName}`
+    )
+    setSendError(null)
+    setSendSuccess(false)
+    setShowSendModal(true)
+  }
+
+  async function handleSend() {
+    if (!sendEmail.trim()) { setSendError('El email del cliente es obligatorio'); return }
+    setSending(true)
+    setSendError(null)
+    try {
+      const res = await fetch('/api/send-budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          budgetId: id, clientEmail: sendEmail.trim(),
+          subject: sendSubject, message: sendMessage,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        setSendError(data.error || 'Error al enviar el email. Inténtalo de nuevo.')
+        return
+      }
+      setBudgetStatus('enviado')
+      setShowSendModal(false)
+      setSendSuccess(true)
+      setTimeout(() => setSendSuccess(false), 3000)
+    } catch {
+      setSendError('Error de conexión. Inténtalo de nuevo.')
+    } finally {
+      setSending(false)
+    }
+  }
+
   // ── Guardado ─────────────────────────────────────────────────────────────
   async function handleSave() {
     if (!userId) return
@@ -728,6 +896,7 @@ export default function PresupuestoEditorPage() {
     const { error: budgetErr } = await supabase
       .from('budgets')
       .update({
+        nombre: budget.nombre || null,
         client_name: budget.client_name || null, client_email: budget.client_email || null,
         client_address: budget.client_address || null, client_phone: budget.client_phone || null,
         client_nif: budget.client_nif || null, tax_type: budget.tax_type, tax_rate: budget.tax_rate,
@@ -829,57 +998,69 @@ export default function PresupuestoEditorPage() {
   }, [lastChange, dirty])
 
   // ── PDF ───────────────────────────────────────────────────────────────────
+
+  async function uploadAndDownloadPDF(blob: Blob) {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Sin sesión')
+    const storagePath = `${user.id}/${id}.pdf`
+    await supabase.storage.from('pdfs').upload(storagePath, blob, { upsert: true, contentType: 'application/pdf' })
+    await supabase.from('budgets').update({ pdf_url: storagePath }).eq('id', id)
+    setPdfUrl(storagePath)
+    const objectUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl; a.download = `presupuesto-${budget.budget_number}.pdf`
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    URL.revokeObjectURL(objectUrl)
+  }
+
   async function handleGeneratePDF() {
     setGeneratingPdf(true); setSaveError(null)
     try {
-      const res = await fetch('/api/generate-pdf-html', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ budgetId: id }),
-      })
-      if (!res.ok) throw new Error('Error al generar el HTML')
-      const { html } = await res.json()
+      if (profileTemplateUrl) {
+        // Path con plantilla personalizada: genera HTML → html2canvas → jsPDF
+        const res = await fetch('/api/generate-pdf-html', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ budgetId: id }),
+        })
+        if (!res.ok) throw new Error('Error al generar el HTML')
+        const { html } = await res.json()
 
-      const styleBlocks = html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) ?? []
-      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
-      const bodyContent = bodyMatch ? bodyMatch[1] : html
+        const styleBlocks = html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) ?? []
+        const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+        const bodyContent = bodyMatch ? bodyMatch[1] : html
 
-      const container = document.createElement('div')
-      container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:white;font-family:Arial,sans-serif;'
-      container.innerHTML = styleBlocks.join('\n') + bodyContent
-      document.body.appendChild(container)
+        const container = document.createElement('div')
+        container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:white;font-family:Arial,sans-serif;'
+        container.innerHTML = styleBlocks.join('\n') + bodyContent
+        document.body.appendChild(container)
 
-      const { default: html2canvas } = await import('html2canvas')
-      const canvas = await html2canvas(container, { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', width: 794 })
-      document.body.removeChild(container)
+        const { default: html2canvas } = await import('html2canvas')
+        const canvas = await html2canvas(container, { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', width: 794 })
+        document.body.removeChild(container)
 
-      const { jsPDF } = await import('jspdf')
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-      const pdfWidth = pdf.internal.pageSize.getWidth()
-      const pdfPageHeight = pdf.internal.pageSize.getHeight()
-      const imgWidth = pdfWidth
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-      const imgData = canvas.toDataURL('image/jpeg', 0.95)
-      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight)
-      let heightLeft = imgHeight - pdfPageHeight; let page = 1
-      while (heightLeft > 0) {
-        pdf.addPage(); pdf.addImage(imgData, 'JPEG', 0, -(pdfPageHeight * page), imgWidth, imgHeight)
-        heightLeft -= pdfPageHeight; page++
+        const { jsPDF } = await import('jspdf')
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+        const pdfWidth = pdf.internal.pageSize.getWidth()
+        const pdfPageHeight = pdf.internal.pageSize.getHeight()
+        const imgWidth = pdfWidth
+        const imgHeight = (canvas.height * imgWidth) / canvas.width
+        const imgData = canvas.toDataURL('image/jpeg', 0.95)
+        pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight)
+        let heightLeft = imgHeight - pdfPageHeight; let page = 1
+        while (heightLeft > 0) {
+          pdf.addPage(); pdf.addImage(imgData, 'JPEG', 0, -(pdfPageHeight * page), imgWidth, imgHeight)
+          heightLeft -= pdfPageHeight; page++
+        }
+        await uploadAndDownloadPDF(pdf.output('blob'))
+
+      } else {
+        // Path react-pdf: el servidor devuelve el PDF directamente como binario
+        const res = await fetch(`/api/generate-pdf?budgetId=${id}`)
+        if (!res.ok) throw new Error('Error al generar el PDF')
+        const blob = await res.blob()
+        await uploadAndDownloadPDF(blob)
       }
-
-      const blob = pdf.output('blob')
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Sin sesión')
-      const storagePath = `${user.id}/${id}.pdf`
-      await supabase.storage.from('pdfs').upload(storagePath, blob, { upsert: true, contentType: 'application/pdf' })
-      await supabase.from('budgets').update({ pdf_url: storagePath }).eq('id', id)
-      setPdfUrl(storagePath)
-
-      const objectUrl = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = objectUrl; a.download = `presupuesto-${budget.budget_number}.pdf`
-      document.body.appendChild(a); a.click(); document.body.removeChild(a)
-      URL.revokeObjectURL(objectUrl)
     } catch (err) {
       console.error('Error generando PDF:', err)
       setSaveError('No se pudo generar el PDF. Inténtalo de nuevo.')
@@ -889,7 +1070,10 @@ export default function PresupuestoEditorPage() {
   }
 
   // ── Exportación CSV ────────────────────────────────────────────────────
-  function handleExportCSV() {
+  async function handleExportCSV() {
+    setLoadingCsv(true)
+    await Promise.resolve()
+    try {
     const fmtNum = (n: number) =>
       n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -936,7 +1120,7 @@ export default function PresupuestoEditorPage() {
       ...(budget.profit_enabled ? [[`Beneficio industrial ${budget.profit_rate}%`, profit] as [string, number]] : []),
       ...(extras > 0 ? [[budget.extras_description || 'Extras', extras] as [string, number]] : []),
       ['Base imponible', baseImponible],
-      [`${budget.tax_type} ${budget.tax_rate}%`, taxAmount],
+      [budget.tax_rate === 0 ? 'Exento (0%)' : `${budget.tax_type} ${budget.tax_rate}%`, taxAmount],
       ['TOTAL', totalAmount],
     ]
     for (const [label, amount] of summaryLines) {
@@ -951,10 +1135,15 @@ export default function PresupuestoEditorPage() {
     a.download = `presupuesto-${budget.budget_number}-${(budget.client_name || 'cliente').replace(/\s+/g, '-')}.csv`
     document.body.appendChild(a); a.click(); document.body.removeChild(a)
     URL.revokeObjectURL(url)
+    } finally {
+      setLoadingCsv(false)
+    }
   }
 
   // ── Exportación Excel ──────────────────────────────────────────────────
   async function handleExportExcel() {
+    setLoadingExcel(true)
+    try {
     const ExcelJS = (await import('exceljs')).default
     const wb = new ExcelJS.Workbook()
     const ws = wb.addWorksheet('Presupuesto')
@@ -1009,7 +1198,7 @@ export default function PresupuestoEditorPage() {
       ...(budget.profit_enabled ? [[`Beneficio industrial ${budget.profit_rate}%`, profit, false] as [string, number, boolean]] : []),
       ...(extras > 0 ? [[budget.extras_description || 'Extras', extras, false] as [string, number, boolean]] : []),
       ['Base imponible', baseImponible, false],
-      [`${budget.tax_type} ${budget.tax_rate}%`, taxAmount, false],
+      [budget.tax_rate === 0 ? 'Exento (0%)' : `${budget.tax_type} ${budget.tax_rate}%`, taxAmount, false],
       ['TOTAL', totalAmount, true],
     ]
     for (const [label, amount, isBold] of summaryLines) {
@@ -1026,6 +1215,9 @@ export default function PresupuestoEditorPage() {
     a.download = `presupuesto-${budget.budget_number}-${(budget.client_name || 'cliente').replace(/\s+/g, '-')}.xlsx`
     document.body.appendChild(a); a.click(); document.body.removeChild(a)
     URL.revokeObjectURL(url)
+    } finally {
+      setLoadingExcel(false)
+    }
   }
 
   async function handleDownloadPDF() {
@@ -1040,6 +1232,120 @@ export default function PresupuestoEditorPage() {
     a.href = objectUrl; a.download = `presupuesto-${budget.budget_number}.pdf`
     document.body.appendChild(a); a.click(); document.body.removeChild(a)
     URL.revokeObjectURL(objectUrl)
+  }
+
+  // ── Exportar BC3 ─────────────────────────────────────────────────────────
+  async function handleExportBC3() {
+    setGeneratingBC3(true)
+    setSaveError(null)
+    try {
+      const res = await fetch('/api/export-bc3', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budgetId: id }),
+      })
+      if (!res.ok) throw new Error('Error al generar el BC3')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `presupuesto-${budget.budget_number}.bc3`
+      document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Error exportando BC3:', err)
+      setSaveError('No se pudo generar el archivo BC3. Inténtalo de nuevo.')
+    } finally {
+      setGeneratingBC3(false)
+    }
+  }
+
+  // ── Generar presupuesto (expandir descripciones) ──────────────────────────
+  async function handleGenerateBudget() {
+    setGeneratingBudget(true)
+    setSaveError(null)
+    try {
+      const items = visibleItems.map(i => ({ id: i.id, description: i.description }))
+      const res = await fetch('/api/expand-descriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budgetId: id, items }),
+      })
+      if (!res.ok) throw new Error('Error al generar el presupuesto')
+      const { items: expanded } = await res.json() as {
+        items: Array<{ id: string; titulo_partida: string; descripcion_extendida: string }>
+      }
+      setLineItems(prev => prev.map(item => {
+        const exp = expanded.find(e => e.id === item.id)
+        if (!exp) return item
+        return { ...item, titulo_partida: exp.titulo_partida || null, descripcion_extendida: exp.descripcion_extendida || null }
+      }))
+    } catch (err) {
+      console.error('Error generando presupuesto:', err)
+      setSaveError('No se pudo generar el presupuesto. Inténtalo de nuevo.')
+    } finally {
+      setGeneratingBudget(false)
+    }
+  }
+
+  // ── Edición de descripción extendida ──────────────────────────────────────
+  function openExtendedEdit(itemId: string) {
+    const item = lineItems.find(i => i.id === itemId)
+    if (!item) return
+    setExtendedEdit({
+      itemId,
+      titulo: item.titulo_partida ?? '',
+      descripcion: item.descripcion_extendida ?? '',
+      saving: false,
+      regenerating: false,
+    })
+  }
+
+  async function handleSaveExtended() {
+    if (!extendedEdit) return
+    setExtendedEdit(prev => prev ? { ...prev, saving: true } : null)
+    const supabase = createClient()
+    await supabase.from('line_items').update({
+      titulo_partida: extendedEdit.titulo || null,
+      descripcion_extendida: extendedEdit.descripcion || null,
+    }).eq('id', extendedEdit.itemId)
+    setLineItems(prev => prev.map(item =>
+      item.id === extendedEdit.itemId
+        ? { ...item, titulo_partida: extendedEdit.titulo || null, descripcion_extendida: extendedEdit.descripcion || null }
+        : item
+    ))
+    setExtendedEdit(null)
+  }
+
+  async function handleRegenerateExtended() {
+    if (!extendedEdit) return
+    const item = lineItems.find(i => i.id === extendedEdit.itemId)
+    if (!item) return
+    setExtendedEdit(prev => prev ? { ...prev, regenerating: true } : null)
+    try {
+      const res = await fetch('/api/expand-descriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budgetId: id, items: [{ id: item.id, description: item.description }] }),
+      })
+      if (res.ok) {
+        const { items: expanded } = await res.json() as {
+          items: Array<{ id: string; titulo_partida: string; descripcion_extendida: string }>
+        }
+        const exp = expanded[0]
+        if (exp) {
+          setExtendedEdit(prev => prev ? {
+            ...prev,
+            titulo: exp.titulo_partida ?? prev.titulo,
+            descripcion: exp.descripcion_extendida ?? prev.descripcion,
+          } : null)
+        }
+      }
+    } catch {
+      // Error silencioso en el modal
+    } finally {
+      setExtendedEdit(prev => prev ? { ...prev, regenerating: false } : null)
+    }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1058,42 +1364,97 @@ export default function PresupuestoEditorPage() {
   const visibleChapters = chapters.filter(c => !c._deleted).sort((a, b) => a.position - b.position)
   const activeItem = activeId ? lineItems.find(i => i.id === activeId) : null
   const allChaptersCollapsed = visibleChapters.length > 0 && visibleChapters.every(ch => collapsedChapterIds.has(ch.id))
+  const hasExtendedDescriptions = visibleItems.some(i => i.descripcion_extendida)
 
   return (
     <main
       className="min-h-screen bg-[#F4F6F9] dark:bg-[#0D1B2A]"
-      onClick={() => setOpenMenuId(null)}
+      onClick={() => { setOpenMenuId(null); setStatusOpen(false) }}
     >
       {/* Barra superior */}
-      <div className="bg-white dark:bg-[#1B2A3A] border-b border-[#D5DCE4] dark:border-[#3A4A5C] px-4 py-4 flex items-center justify-between gap-3">
+      <div className="bg-white dark:bg-[#1B2A3A] border-b border-[#D5DCE4] dark:border-[#3A4A5C] px-4 py-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <a href="/dashboard" className="text-[#6B7B8C] hover:text-[#FF6A00] text-sm transition-colors shrink-0">
             ← Volver
           </a>
           <span className="text-base font-bold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">
-            Presupuesto #{budget.budget_number}
+            {budget.nombre || `Presupuesto #${budget.budget_number}`}
           </span>
+          <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
+            <button type="button" onClick={() => setStatusOpen(prev => !prev)}>
+              <StatusBadge status={budgetStatus} size="md" />
+            </button>
+            {statusOpen && (
+              <div className="absolute left-0 top-8 bg-white dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[8px] shadow-lg z-20 min-w-[160px] py-1">
+                {(['borrador', 'enviado', 'aceptado', 'rechazado', 'en_revision'] as BudgetStatus[]).map(s => (
+                  <button key={s} type="button"
+                    onClick={() => handleStatusChange(s)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] ${budgetStatus === s ? 'font-semibold' : ''}`}>
+                    <StatusBadge status={s} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {dirty && <span className="text-xs text-[#A9B5C2] shrink-0">Sin guardar</span>}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button type="button" onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
-            disabled={generatingPdf}
-            className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors">
-            {generatingPdf ? 'Generando...' : pdfUrl ? 'Descargar PDF' : 'PDF'}
+        <div className="hidden sm:flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={openSendModal}
+            className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium transition-colors"
+          >
+            Enviar al cliente
           </button>
           <div className="relative">
-            <button type="button" onClick={handleSave} disabled={saving}
-              className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2 text-sm disabled:opacity-40 transition-colors">
-              {saving ? 'Guardando...' : 'Guardar'}
-            </button>
+            <LoadingButton
+              loading={saving}
+              onClick={handleSave}
+              variant="secondary"
+              messages={["Guardando...", "Sincronizando datos...", "Casi listo..."]}
+              duration={2000}
+              className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors"
+            >
+              Guardar borrador
+            </LoadingButton>
             <Tooltip
-              content="Tus cambios se guardan solos cada 30 segundos"
+              content="Guarda el borrador con las partidas tal como están, sin procesar"
               placement="bottom-right"
               isActive={tooltipId === 'edit_autosave'}
               onDismiss={() => markSeen('edit_autosave')}
               onSkipAll={skipTour}
             />
           </div>
+          <div className="relative">
+            <LoadingButton
+              loading={generatingBudget}
+              onClick={handleGenerateBudget}
+              variant="secondary"
+              messages={["Analizando partidas...", "Generando descripciones técnicas...", "Revisando terminología...", "Aplicando estilo profesional...", "Casi listo..."]}
+              duration={20000}
+              className="border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] rounded-[8px] px-3 py-2 text-sm font-medium disabled:opacity-40 transition-colors"
+            >
+              ✨ Generar presupuesto
+            </LoadingButton>
+            <Tooltip
+              content="Genera descripciones técnicas profesionales con IA para cada partida. Puedes editarlas antes del PDF"
+              placement="bottom-right"
+              isActive={tooltipId === 'edit_generate'}
+              onDismiss={() => markSeen('edit_generate')}
+              onSkipAll={skipTour}
+            />
+          </div>
+          <LoadingButton
+            loading={generatingPdf}
+            onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
+            variant="primary"
+            messages={["Preparando el documento...", "Componiendo páginas...", "Aplicando formato profesional...", "Generando PDF..."]}
+            duration={80000}
+            messageInterval={15000}
+            className="bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm disabled:opacity-40 transition-colors"
+          >
+            {pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
+          </LoadingButton>
         </div>
       </div>
 
@@ -1115,11 +1476,34 @@ export default function PresupuestoEditorPage() {
           </div>
           {budgetSectionOpen && (
             <div id="budget-details" className="space-y-4">
+              <div className="space-y-1">
+                <label className={lbl}>Nombre del presupuesto</label>
+                <input type="text" value={budget.nombre}
+                  onChange={e => updateBudgetField('nombre', e.target.value)}
+                  placeholder="Ej. Reforma cocina — Urbanización Las Palmas"
+                  className={inputClass} />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
+                <div className="space-y-1 min-w-0">
                   <label className={lbl}>Fecha</label>
-                  <input type="date" value={budget.issued_date}
-                    onChange={e => updateBudgetField('issued_date', e.target.value)} className={inputClass} />
+                  <div className="relative min-w-0">
+                    <div className={`${inputClass} min-w-0 max-w-full pr-11 flex items-center min-h-[42px]`}>
+                      <span className="block min-w-0 truncate">{fmtDateDisplay(budget.issued_date)}</span>
+                    </div>
+                    <input
+                      type="date"
+                      value={budget.issued_date}
+                      onChange={e => updateBudgetField('issued_date', e.target.value)}
+                      aria-label="Fecha"
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    />
+                    <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[#6B7B8C] dark:text-[#A9B5C2]">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M8 2v3M16 2v3M3 9h18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                        <rect x="3" y="5" width="18" height="16" rx="3" stroke="currentColor" strokeWidth="1.8" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <label className={lbl}>Validez (días)</label>
@@ -1138,30 +1522,6 @@ export default function PresupuestoEditorPage() {
                     placeholder="Ej. 26/001" className={inputClass} />
                 </div>
               </div>
-              <label className="flex items-start gap-3 cursor-pointer select-none pt-1">
-                <div className="relative mt-0.5 shrink-0" onClick={e => e.preventDefault()}>
-                  <input type="checkbox" checked={budget.expand_descriptions}
-                    onChange={e => updateBudgetField('expand_descriptions', e.target.checked)}
-                    className="sr-only" />
-                  <div
-                    onClick={() => updateBudgetField('expand_descriptions', !budget.expand_descriptions)}
-                    className={`w-10 h-6 rounded-full transition-colors cursor-pointer ${budget.expand_descriptions ? 'bg-[#FF6A00]' : 'bg-[#D5DCE4] dark:bg-[#3A4A5C]'}`}
-                  />
-                  <div
-                    onClick={() => updateBudgetField('expand_descriptions', !budget.expand_descriptions)}
-                    className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform cursor-pointer ${budget.expand_descriptions ? 'translate-x-5' : 'translate-x-1'}`}
-                  />
-                </div>
-                <div>
-                  <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">Mejorar descripciones en el PDF</span>
-                  <p className="text-xs text-[#A9B5C2] mt-0.5">
-                    {budget.expand_descriptions
-                      ? 'Las descripciones se expandirán a texto técnico profesional al generar el PDF'
-                      : 'El PDF mostrará exactamente lo que has escrito'}
-                  </p>
-                </div>
-              </label>
-
               <div className="flex flex-wrap gap-x-6 gap-y-3 pt-1">
                 {profileIban && (
                   <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -1263,37 +1623,45 @@ export default function PresupuestoEditorPage() {
               items={visibleChapters.map(ch => `chapter:${ch.id}`)}
               strategy={verticalListSortingStrategy}
             >
-              {visibleChapters.map((chapter, chIdx) => {
-                const chItems = visibleItems
-                  .filter(i => i.chapter_id === chapter.id)
-                  .sort((a, b) => a.position - b.position)
-                const chSubtotal = chItems.reduce((s, i) => s + i.total, 0)
-                const isOpen = !collapsedChapterIds.has(chapter.id)
-                return (
-                  <SortableChapterSection
-                    key={chapter.id}
-                    chapter={chapter}
-                    chIdx={chIdx}
-                    items={chItems}
-                    chSubtotal={chSubtotal}
-                    isOnlyChapter={visibleChapters.length === 1}
-                    isOpen={isOpen}
-                    onToggleOpen={() => setCollapsedChapterIds(prev => {
-                      const next = new Set(prev)
-                      if (next.has(chapter.id)) next.delete(chapter.id)
-                      else next.add(chapter.id)
-                      return next
-                    })}
-                    openMenuId={openMenuId}
-                    setOpenMenuId={setOpenMenuId}
-                    onRename={renameChapter}
-                    onDelete={requestDeleteChapter}
-                    onAddItem={addItem}
-                    onUpdateItem={updateItem}
-                    onDeleteItem={deleteItem}
-                  />
-                )
-              })}
+              {(() => {
+                const firstExtendedItemId = visibleItems.find(i => i.descripcion_extendida)?.id ?? null
+                return visibleChapters.map((chapter, chIdx) => {
+                  const chItems = visibleItems
+                    .filter(i => i.chapter_id === chapter.id)
+                    .sort((a, b) => a.position - b.position)
+                  const chSubtotal = chItems.reduce((s, i) => s + i.total, 0)
+                  const isOpen = !collapsedChapterIds.has(chapter.id)
+                  return (
+                    <SortableChapterSection
+                      key={chapter.id}
+                      chapter={chapter}
+                      chIdx={chIdx}
+                      items={chItems}
+                      chSubtotal={chSubtotal}
+                      isOnlyChapter={visibleChapters.length === 1}
+                      isOpen={isOpen}
+                      onToggleOpen={() => setCollapsedChapterIds(prev => {
+                        const next = new Set(prev)
+                        if (next.has(chapter.id)) next.delete(chapter.id)
+                        else next.add(chapter.id)
+                        return next
+                      })}
+                      openMenuId={openMenuId}
+                      setOpenMenuId={setOpenMenuId}
+                      onRename={renameChapter}
+                      onDelete={requestDeleteChapter}
+                      onAddItem={addItem}
+                      onUpdateItem={updateItem}
+                      onDeleteItem={deleteItem}
+                      onEditExtended={openExtendedEdit}
+                      firstExtendedItemId={firstExtendedItemId}
+                      extendedTooltipActive={tooltipId === 'edit_edit_extended'}
+                      onExtendedTooltipDismiss={() => markSeen('edit_edit_extended')}
+                      onExtendedTooltipSkipAll={skipTour}
+                    />
+                  )
+                })
+              })()}
             </SortableContext>
           </div>
 
@@ -1334,11 +1702,15 @@ export default function PresupuestoEditorPage() {
                   <input type="radio" name="tax_type" value={t}
                     checked={budget.tax_type === t} onChange={() => handleTaxTypeChange(t)}
                     className="accent-[#FF6A00]" />
-                  <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">
-                    {t} ({t === 'IGIC' ? '7' : '21'}%)
-                  </span>
+                  <span className="text-sm text-[#0D1B2A] dark:text-[#F4F6F9]">{t}</span>
                 </label>
               ))}
+            </div>
+            <div className="flex items-center gap-1 pt-1">
+              <input type="number" value={budget.tax_rate} min={0} max={30} step="0.01"
+                onChange={e => updateBudgetField('tax_rate', Number(e.target.value))}
+                className="w-20 bg-[#F4F6F9] dark:bg-[#0D1B2A] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] rounded-[8px] px-2 py-1.5 text-sm text-right focus:outline-none focus:border-[#FF6A00] transition-colors" />
+              <span className="text-sm text-[#6B7B8C]">% {budget.tax_rate === 0 ? '(Exento)' : ''}</span>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -1412,13 +1784,19 @@ export default function PresupuestoEditorPage() {
               <span>Base imponible</span><span>{fmt(baseImponible)} €</span>
             </div>
             <div className="flex justify-between text-[#6B7B8C] dark:text-[#A9B5C2]">
-              <span>{budget.tax_type} ({budget.tax_rate}%)</span><span>{fmt(taxAmount)} €</span>
+              <span>{budget.tax_rate === 0 ? 'Exento (0%)' : `${budget.tax_type} (${budget.tax_rate}%)`}</span><span>{fmt(taxAmount)} €</span>
             </div>
             <div className="flex justify-between font-bold text-[#0D1B2A] dark:text-[#F4F6F9] text-base pt-2 border-t border-[#D5DCE4] dark:border-[#3A4A5C]">
               <span>Total</span><span>{fmt(totalAmount)} €</span>
             </div>
           </div>
         </section>
+
+        {sendSuccess && (
+          <div role="status" className="rounded-[8px] bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+            Presupuesto enviado correctamente. El estado se ha actualizado a &ldquo;Enviado&rdquo;.
+          </div>
+        )}
 
         {saveError && (
           <p role="alert" className="rounded-[8px] bg-red-50 dark:bg-red-900/20 border border-[#E5484D]/40 px-4 py-3 text-sm text-[#E5484D]">
@@ -1427,33 +1805,94 @@ export default function PresupuestoEditorPage() {
         )}
 
         {/* Botones móvil */}
-        <div className="flex flex-col sm:flex-row gap-3 pb-8">
-          <button type="button" onClick={handleSave} disabled={saving}
-            className="flex-1 bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
-            {saving ? 'Guardando...' : 'Guardar borrador'}
+        <div className="flex flex-col gap-3 pb-4">
+          <LoadingButton
+            loading={saving}
+            onClick={handleSave}
+            variant="primary"
+            messages={["Guardando...", "Sincronizando datos...", "Casi listo..."]}
+            duration={2000}
+            className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors"
+          >
+            Guardar borrador
+          </LoadingButton>
+          <LoadingButton
+            loading={generatingBudget}
+            onClick={handleGenerateBudget}
+            variant="secondary"
+            messages={["Analizando partidas...", "Generando descripciones técnicas...", "Revisando terminología...", "Aplicando estilo profesional...", "Casi listo..."]}
+            duration={20000}
+            className="w-full border-2 border-[#FF6A00] text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/10 font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors"
+          >
+            ✨ Generar presupuesto
+          </LoadingButton>
+          <LoadingButton
+            loading={generatingPdf}
+            onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
+            variant="secondary"
+            messages={["Preparando el documento...", "Componiendo páginas...", "Aplicando formato profesional...", "Generando PDF..."]}
+            duration={80000}
+            messageInterval={15000}
+            className="w-full bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#D5DCE4] dark:hover:bg-[#4A5A6C] font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors"
+          >
+            {pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
+          </LoadingButton>
+          <button
+            type="button"
+            onClick={openSendModal}
+            className="w-full border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-semibold rounded-[8px] px-4 py-4 text-base transition-colors"
+          >
+            Enviar al cliente
           </button>
-          <button type="button" onClick={pdfUrl ? handleDownloadPDF : handleGeneratePDF}
-            disabled={generatingPdf}
-            className="flex-1 bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#D5DCE4] dark:hover:bg-[#4A5A6C] font-semibold rounded-[8px] px-4 py-4 text-base disabled:opacity-40 transition-colors">
-            {generatingPdf ? 'Generando PDF...' : pdfUrl ? 'Descargar PDF' : 'Generar PDF'}
-          </button>
+          {!hasExtendedDescriptions && (
+            <p className="text-xs text-[#A9B5C2] text-center">
+              Genera el presupuesto primero para obtener descripciones profesionales
+            </p>
+          )}
         </div>
-        <div className="relative flex gap-3 pb-8">
-          <button type="button" onClick={handleExportCSV}
-            className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm transition-colors">
-            Exportar CSV
-          </button>
-          <button type="button" onClick={handleExportExcel}
-            className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm transition-colors">
-            Exportar Excel
-          </button>
-          <Tooltip
-            content="Genera tu PDF profesional, o exporta a Excel/CSV"
-            placement="top-right"
-            isActive={tooltipId === 'edit_export'}
-            onDismiss={() => markSeen('edit_export')}
-            onSkipAll={skipTour}
-          />
+        <div className="space-y-2 pb-8">
+          <div className="relative flex flex-wrap gap-3">
+            <LoadingButton
+              loading={loadingCsv}
+              onClick={handleExportCSV}
+              variant="secondary"
+              messages={["Preparando datos...", "Generando CSV..."]}
+              duration={1000}
+              className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm disabled:opacity-40 transition-colors"
+            >
+              Exportar CSV
+            </LoadingButton>
+            <LoadingButton
+              loading={loadingExcel}
+              onClick={handleExportExcel}
+              variant="secondary"
+              messages={["Preparando datos...", "Aplicando formato Excel...", "Generando archivo..."]}
+              duration={2000}
+              className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm disabled:opacity-40 transition-colors"
+            >
+              Exportar Excel
+            </LoadingButton>
+            <LoadingButton
+              loading={generatingBC3}
+              onClick={handleExportBC3}
+              variant="secondary"
+              messages={["Analizando partidas...", "Generando descomposición de precios...", "Calculando unidades básicas...", "Componiendo archivo BC3...", "Casi listo..."]}
+              duration={40000}
+              className="flex-1 border border-[#D5DCE4] dark:border-[#3A4A5C] bg-white dark:bg-[#1B2A3A] text-[#0D1B2A] dark:text-[#F4F6F9] hover:border-[#FF6A00] hover:text-[#FF6A00] font-medium rounded-[8px] px-4 py-3 text-sm disabled:opacity-40 transition-colors"
+            >
+              Exportar BC3
+            </LoadingButton>
+            <Tooltip
+              content="Exporta a PDF, Excel, CSV o BC3 para Presto y TCQ"
+              placement="top-right"
+              isActive={tooltipId === 'edit_export'}
+              onDismiss={() => markSeen('edit_export')}
+              onSkipAll={skipTour}
+            />
+          </div>
+          <p className="text-xs text-[#A9B5C2]">
+            BC3 incluye descomposición IA de precios — puede tardar 10-20 segundos
+          </p>
         </div>
 
       </div>
@@ -1486,6 +1925,119 @@ export default function PresupuestoEditorPage() {
               </button>
               <button type="button" onClick={() => setDeleteConfirm(null)}
                 className="w-full text-[#6B7B8C] text-sm py-2 hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] transition-colors">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: editar descripción extendida */}
+      {extendedEdit && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white dark:bg-[#1B2A3A] rounded-[12px] p-6 max-w-lg w-full space-y-4 shadow-xl">
+            <h3 className="font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">Editar descripción extendida</h3>
+
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">
+                  Título de la partida
+                </label>
+                <span className={`text-xs ${extendedEdit.titulo.length > 50 ? 'text-[#F5A623]' : 'text-[#A9B5C2]'}`}>
+                  {extendedEdit.titulo.length}/60
+                </span>
+              </div>
+              <textarea
+                rows={2}
+                maxLength={60}
+                value={extendedEdit.titulo}
+                onChange={e => setExtendedEdit(prev => prev ? { ...prev, titulo: e.target.value } : null)}
+                placeholder="Título corto de la partida"
+                className={`${inputClass} resize-y min-w-0`}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">
+                Descripción extendida
+              </label>
+              <textarea
+                rows={5}
+                value={extendedEdit.descripcion}
+                onChange={e => setExtendedEdit(prev => prev ? { ...prev, descripcion: e.target.value } : null)}
+                placeholder="Descripción técnica y profesional de la partida..."
+                className={`${inputClass} resize-y`}
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleRegenerateExtended}
+                disabled={extendedEdit.regenerating}
+                className="w-full border border-[#FF6A00] text-[#FF6A00] hover:bg-orange-50 dark:hover:bg-orange-900/20 font-semibold rounded-[8px] px-4 py-2.5 text-sm disabled:opacity-40 transition-colors"
+              >
+                {extendedEdit.regenerating ? 'Regenerando...' : '✨ Regenerar con IA'}
+              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveExtended}
+                  disabled={extendedEdit.saving}
+                  className="flex-1 bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm disabled:opacity-40 transition-colors"
+                >
+                  {extendedEdit.saving ? 'Guardando...' : 'Guardar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExtendedEdit(null)}
+                  className="flex-1 bg-[#F4F6F9] dark:bg-[#0D1B2A] text-[#6B7B8C] dark:text-[#A9B5C2] hover:bg-[#D5DCE4] dark:hover:bg-[#3A4A5C] font-semibold rounded-[8px] px-4 py-2.5 text-sm transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: enviar al cliente */}
+      {showSendModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white dark:bg-[#1B2A3A] rounded-[12px] p-6 max-w-lg w-full space-y-4 shadow-xl">
+            <h3 className="font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">Enviar al cliente</h3>
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Email del cliente</label>
+              <input type="email" value={sendEmail}
+                onChange={e => setSendEmail(e.target.value)}
+                placeholder="cliente@email.com"
+                className={inputClass} />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Asunto</label>
+              <input type="text" value={sendSubject}
+                onChange={e => setSendSubject(e.target.value)}
+                className={inputClass} />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-[#6B7B8C] dark:text-[#A9B5C2]">Mensaje</label>
+              <textarea rows={6} value={sendMessage}
+                onChange={e => setSendMessage(e.target.value)}
+                className={`${inputClass} resize-y`} />
+            </div>
+            <p className="text-xs text-[#A9B5C2]">
+              Se adjuntará el PDF del presupuesto. El email se enviará desde contacto@presuply.app en nombre de tu empresa.
+            </p>
+            {sendError && (
+              <p role="alert" className="text-sm text-[#E5484D]">{sendError}</p>
+            )}
+            <div className="flex flex-col gap-2">
+              <button type="button" onClick={handleSend} disabled={sending}
+                className="w-full bg-[#FF6A00] hover:bg-[#FF9248] text-white font-semibold rounded-[8px] px-4 py-2.5 text-sm disabled:opacity-40 transition-colors">
+                {sending ? 'Enviando...' : 'Enviar'}
+              </button>
+              <button type="button" onClick={() => setShowSendModal(false)} disabled={sending}
+                className="w-full bg-[#F4F6F9] dark:bg-[#0D1B2A] text-[#6B7B8C] dark:text-[#A9B5C2] hover:bg-[#D5DCE4] dark:hover:bg-[#3A4A5C] font-semibold rounded-[8px] px-4 py-2.5 text-sm disabled:opacity-40 transition-colors">
                 Cancelar
               </button>
             </div>

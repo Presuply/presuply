@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { Budget, Folder } from '@/types/database'
+import type { Budget, BudgetStatus, Folder } from '@/types/database'
+import StatusBadge from '@/components/StatusBadge'
 import { getPlanLimits, type PlanKey } from '@/lib/plans'
 import OnboardingModal from '@/components/OnboardingModal'
 import Tooltip from '@/components/Tooltip'
@@ -27,6 +28,11 @@ import {
 
 const FOLDER_COLORS = ['#FF6A00', '#1FB57A', '#3E7BFA', '#F5A623', '#E5484D', '#6B7B8C', '#0D1B2A', '#9B59B6']
 const TRIAL_LIMIT = 3
+const ALL_STATUSES: BudgetStatus[] = ['borrador', 'enviado', 'aceptado', 'rechazado', 'en_revision']
+const STATUS_LABELS: Record<BudgetStatus, string> = {
+  borrador: 'Borrador', enviado: 'Enviado', aceptado: 'Aceptado',
+  rechazado: 'Rechazado', en_revision: 'En revisión',
+}
 
 const fmt = (n: number) => n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtDate = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}` }
@@ -57,12 +63,17 @@ function ColorPicker({ selected, onSelect }: { selected: string; onSelect: (c: s
 
 // ── Fila de presupuesto arrastrable ────────────────────────────────────────
 
-function DraggableBudgetRow({ budget, onDelete, deletingId }: {
+function DraggableBudgetRow({ budget, onDelete, onDuplicate, deletingId, duplicatingId, openMenuId, setOpenMenuId }: {
   budget: Budget
   onDelete: (id: string) => void
+  onDuplicate: (id: string) => void
   deletingId: string | null
+  duplicatingId: string | null
+  openMenuId: string | null
+  setOpenMenuId: (id: string | null) => void
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: budget.id })
+  const menuKey = `brow:${budget.id}`
 
   return (
     <li ref={setNodeRef} style={{ opacity: isDragging ? 0.35 : 1 }} className="flex items-stretch gap-2">
@@ -77,38 +88,53 @@ function DraggableBudgetRow({ budget, onDelete, deletingId }: {
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-[#A9B5C2]">#{budget.budget_number}</span>
-              <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                budget.status === 'sent'
-                  ? 'bg-[#1FB57A]/15 text-[#1FB57A]'
-                  : 'bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#6B7B8C] dark:text-[#A9B5C2]'
-              }`}>
-                {budget.status === 'sent' ? 'Enviado' : 'Borrador'}
-              </span>
+              <StatusBadge status={budget.status} />
             </div>
-            <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">
-              {budget.client_name ?? 'Sin cliente'}
-            </p>
-            <p className="text-xs text-[#A9B5C2]">
-              {budget.issued_date ? fmtDate(budget.issued_date) : '—'}
-            </p>
+            {budget.nombre ? (
+              <>
+                <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{budget.nombre}</p>
+                {budget.client_name && <p className="text-xs text-[#6B7B8C] dark:text-[#A9B5C2] truncate">{budget.client_name}</p>}
+              </>
+            ) : (
+              <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{budget.client_name ?? 'Sin cliente'}</p>
+            )}
+            <p className="text-xs text-[#A9B5C2]">{budget.issued_date ? fmtDate(budget.issued_date) : '—'}</p>
           </div>
           <div className="text-right shrink-0">
             <p className="text-base font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">{fmt(budget.total)} €</p>
           </div>
         </Link>
       </div>
-      <button type="button" onClick={() => onDelete(budget.id)} disabled={deletingId === budget.id}
-        aria-label="Eliminar presupuesto"
-        className="flex items-center justify-center w-12 shrink-0 bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#A9B5C2] hover:text-[#E5484D] hover:border-[#E5484D]/40 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 transition-colors shadow-sm">
-        {deletingId === budget.id ? (
-          <span className="text-xs">...</span>
-        ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-            <path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
-          </svg>
+      <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
+        <button type="button"
+          onClick={() => setOpenMenuId(openMenuId === menuKey ? null : menuKey)}
+          disabled={deletingId === budget.id || duplicatingId === budget.id}
+          aria-label="Opciones del presupuesto"
+          className="flex items-center justify-center w-12 h-full bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] hover:border-[#FF6A00]/50 disabled:opacity-40 transition-colors shadow-sm text-lg">
+          {(deletingId === budget.id || duplicatingId === budget.id) ? <span className="text-xs">...</span> : '⋮'}
+        </button>
+        {openMenuId === menuKey && (
+          <div className="absolute right-0 top-full mt-1 bg-white dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[8px] shadow-lg z-20 min-w-[160px]">
+            <button type="button"
+              onClick={() => { setOpenMenuId(null); onDuplicate(budget.id) }}
+              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] transition-colors rounded-t-[8px]">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              Duplicar
+            </button>
+            <button type="button"
+              onClick={() => { setOpenMenuId(null); onDelete(budget.id) }}
+              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors rounded-b-[8px]">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              </svg>
+              Eliminar
+            </button>
+          </div>
         )}
-      </button>
+      </div>
     </li>
   )
 }
@@ -118,21 +144,26 @@ function DraggableBudgetRow({ budget, onDelete, deletingId }: {
 function DroppableFolderCard({
   folder, count, isExpanded, isRenaming, renameName, setRenameName,
   showColorPicker, openMenuId, setOpenMenuId, setColorPickerFolderId,
-  onToggle, onRenameStart, onRenameConfirm, onColorChange, onDeleteRequest,
+  onToggle, onRenameStart, onRenameConfirm, onRenameCancel, onColorChange, onDeleteRequest,
 }: {
   folder: Folder; count: number; isExpanded: boolean
   isRenaming: boolean; renameName: string; setRenameName: (v: string) => void
   showColorPicker: boolean; openMenuId: string | null
   setOpenMenuId: (id: string | null) => void
   setColorPickerFolderId: (id: string | null) => void
-  onToggle: () => void; onRenameStart: () => void; onRenameConfirm: () => void
+  onToggle: () => void; onRenameStart: () => void; onRenameConfirm: () => void; onRenameCancel: () => void
   onColorChange: (color: string) => void; onDeleteRequest: () => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `folder_${folder.id}` })
   const nameRef = useRef<HTMLInputElement>(null)
+  const confirmedRef = useRef(false)
 
   useEffect(() => {
-    if (isRenaming) { nameRef.current?.focus(); nameRef.current?.select() }
+    if (isRenaming) {
+      confirmedRef.current = false
+      nameRef.current?.focus()
+      nameRef.current?.select()
+    }
   }, [isRenaming])
 
   return (
@@ -151,15 +182,18 @@ function DroppableFolderCard({
           <button type="button" onClick={onToggle}
             className="flex flex-1 items-center gap-3 px-3 py-3 text-left min-w-0">
             <FolderIcon color={folder.color} size={22} />
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 overflow-hidden">
               {isRenaming ? (
                 <input
                   ref={nameRef}
                   type="text"
                   value={renameName}
                   onChange={e => setRenameName(e.target.value)}
-                  onBlur={onRenameConfirm}
-                  onKeyDown={e => { if (e.key === 'Enter') onRenameConfirm(); if (e.key === 'Escape') { setRenameName(folder.name); onRenameConfirm() } }}
+                  onBlur={() => { if (!confirmedRef.current) { confirmedRef.current = true; onRenameConfirm() } }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { confirmedRef.current = true; onRenameConfirm() }
+                    if (e.key === 'Escape') { confirmedRef.current = true; setRenameName(folder.name); onRenameCancel() }
+                  }}
                   onClick={e => e.stopPropagation()}
                   className="w-full bg-transparent text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] focus:outline-none focus:ring-1 focus:ring-[#FF6A00] rounded px-1"
                 />
@@ -227,6 +261,7 @@ export default function DashboardPage() {
   const [folders, setFolders] = useState<Folder[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('trial')
   const [budgetsUsed, setBudgetsUsed] = useState(0)
   const [openingPortal, setOpeningPortal] = useState(false)
@@ -237,9 +272,10 @@ export default function DashboardPage() {
   const [showFolderUpgradeModal, setShowFolderUpgradeModal] = useState(false)
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null)
 
-  // Búsqueda
+  // Búsqueda y filtros
   const [searchActive, setSearchActive] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'todos' | BudgetStatus>('todos')
   const searchRef = useRef<HTMLInputElement>(null)
 
   // Carpetas UI
@@ -307,11 +343,16 @@ export default function DashboardPage() {
     if (searchActive) searchRef.current?.focus()
   }, [searchActive])
 
+  const displayBudgets = statusFilter === 'todos'
+    ? budgets
+    : budgets.filter(b => b.status === statusFilter)
+
   const filteredBudgets = searchQuery.trim()
-    ? budgets.filter(b => {
+    ? displayBudgets.filter(b => {
         const q = searchQuery.toLowerCase()
         const folder = folders.find(f => f.id === b.folder_id)
         return (
+          (b.nombre ?? '').toLowerCase().includes(q) ||
           (b.client_name ?? '').toLowerCase().includes(q) ||
           String(b.budget_number).includes(q) ||
           (folder?.name ?? '').toLowerCase().includes(q)
@@ -334,6 +375,23 @@ export default function DashboardPage() {
     setDeletingId(null)
   }
 
+  async function handleDuplicate(budgetId: string) {
+    setDuplicatingId(budgetId)
+    try {
+      const res = await fetch('/api/duplicate-budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budgetId }),
+      })
+      const data = await res.json()
+      if (res.ok && data.newBudgetId) {
+        router.push(`/dashboard/presupuesto/${data.newBudgetId}`)
+      }
+    } finally {
+      setDuplicatingId(null)
+    }
+  }
+
   // ── Carpetas ───────────────────────────────────────────────────────────
   async function createFolder() {
     if (!newFolderName.trim()) return
@@ -351,10 +409,19 @@ export default function DashboardPage() {
   }
 
   async function renameFolder(id: string, name: string) {
-    if (!name.trim()) return
+    if (!name.trim()) { setRenamingFolderId(null); return }
     const supabase = createClient()
-    await supabase.from('folders').update({ name: name.trim() }).eq('id', id)
+    const { error } = await supabase.from('folders').update({ name: name.trim() }).eq('id', id)
+    if (error) {
+      console.error('Error al renombrar carpeta:', error)
+      setRenamingFolderId(null)
+      return
+    }
     setFolders(prev => prev.map(f => f.id === id ? { ...f, name: name.trim() } : f))
+    setRenamingFolderId(null)
+  }
+
+  function cancelRename() {
     setRenamingFolderId(null)
   }
 
@@ -444,7 +511,7 @@ export default function DashboardPage() {
   const isTrial = subscriptionStatus === 'trial'
   const hasSubscription = ['trialing', 'active', 'past_due'].includes(subscriptionStatus)
   const activeBudget = activeId ? budgets.find(b => b.id === activeId) : null
-  const unfolderedBudgets = budgets.filter(b => !b.folder_id)
+  const unfolderedBudgets = displayBudgets.filter(b => !b.folder_id)
 
   return (
     <main
@@ -487,7 +554,7 @@ export default function DashboardPage() {
                     </svg>
                   </button>
                   <Tooltip
-                    content="Encuentra cualquier presupuesto al instante"
+                    content="Busca cualquier presupuesto al instante"
                     placement="bottom-right"
                     isActive={!showOnboarding && tooltipId === 'dash_search'}
                     onDismiss={() => markSeen('dash_search')}
@@ -517,7 +584,7 @@ export default function DashboardPage() {
                         + Carpeta
                       </button>
                       <Tooltip
-                        content="Organiza presupuestos por zona o cliente"
+                        content="Organiza tus presupuestos por zona o cliente"
                         placement="bottom-right"
                         isActive={!showOnboarding && tooltipId === 'dash_folder'}
                         onDismiss={() => markSeen('dash_folder')}
@@ -532,7 +599,7 @@ export default function DashboardPage() {
                     + Nuevo
                   </Link>
                   <Tooltip
-                    content="Crea tu primer presupuesto"
+                    content="Crea un nuevo presupuesto subiendo fotos, PDFs o texto de WhatsApp"
                     placement="bottom-right"
                     isActive={!showOnboarding && tooltipId === 'dash_new'}
                     onDismiss={() => markSeen('dash_new')}
@@ -574,6 +641,40 @@ export default function DashboardPage() {
             </>
           )}
         </div>
+
+        {/* Filtro por estado */}
+        {!searchActive && budgets.length > 0 && (() => {
+          const counts = budgets.reduce((acc, b) => {
+            acc[b.status] = (acc[b.status] ?? 0) + 1
+            return acc
+          }, {} as Partial<Record<BudgetStatus, number>>)
+          const visibleStatuses = ALL_STATUSES.filter(s => (counts[s] ?? 0) > 0)
+          if (visibleStatuses.length <= 1) return null
+          return (
+            <div className="flex items-center gap-2 overflow-x-auto">
+              <button type="button"
+                onClick={() => setStatusFilter('todos')}
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                  statusFilter === 'todos'
+                    ? 'bg-[#0D1B2A] dark:bg-[#F4F6F9] text-white dark:text-[#0D1B2A]'
+                    : 'bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9]'
+                }`}>
+                Todos ({budgets.length})
+              </button>
+              {visibleStatuses.map(s => (
+                <button key={s} type="button"
+                  onClick={() => setStatusFilter(s)}
+                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                    statusFilter === s
+                      ? 'bg-[#0D1B2A] dark:bg-[#F4F6F9] text-white dark:text-[#0D1B2A]'
+                      : 'bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9]'
+                  }`}>
+                  {STATUS_LABELS[s]} ({counts[s]})
+                </button>
+              ))}
+            </div>
+          )
+        })()}
 
         {/* Banner miembro de equipo */}
         {ownerEmail && (
@@ -661,6 +762,7 @@ export default function DashboardPage() {
               <ul className="space-y-2">
                 {filteredBudgets.map(b => {
                   const folder = folders.find(f => f.id === b.folder_id)
+                  const menuKey = `search:${b.id}`
                   return (
                     <li key={b.id} className="flex items-stretch gap-2">
                       <Link href={`/dashboard/presupuesto/${b.id}`}
@@ -668,11 +770,7 @@ export default function DashboardPage() {
                         <div className="min-w-0 space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs font-medium text-[#A9B5C2]">#{b.budget_number}</span>
-                            <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                              b.status === 'sent' ? 'bg-[#1FB57A]/15 text-[#1FB57A]' : 'bg-[#EDF0F4] dark:bg-[#3A4A5C] text-[#6B7B8C] dark:text-[#A9B5C2]'
-                            }`}>
-                              {b.status === 'sent' ? 'Enviado' : 'Borrador'}
-                            </span>
+                            <StatusBadge status={b.status} />
                             {folder && (
                               <span className="inline-flex items-center gap-1 text-xs text-[#6B7B8C] dark:text-[#A9B5C2]">
                                 <FolderIcon color={folder.color} size={12} />
@@ -680,25 +778,50 @@ export default function DashboardPage() {
                               </span>
                             )}
                           </div>
-                          <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">
-                            {b.client_name ?? 'Sin cliente'}
-                          </p>
+                          {b.nombre ? (
+                            <>
+                              <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{b.nombre}</p>
+                              {b.client_name && <p className="text-xs text-[#6B7B8C] dark:text-[#A9B5C2] truncate">{b.client_name}</p>}
+                            </>
+                          ) : (
+                            <p className="text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] truncate">{b.client_name ?? 'Sin cliente'}</p>
+                          )}
                           <p className="text-xs text-[#A9B5C2]">{b.issued_date ? fmtDate(b.issued_date) : '—'}</p>
                         </div>
                         <div className="text-right shrink-0">
                           <p className="text-base font-bold text-[#0D1B2A] dark:text-[#F4F6F9]">{fmt(b.total)} €</p>
                         </div>
                       </Link>
-                      <button type="button" onClick={() => handleDelete(b.id)} disabled={deletingId === b.id}
-                        aria-label="Eliminar presupuesto"
-                        className="flex items-center justify-center w-12 shrink-0 bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#A9B5C2] hover:text-[#E5484D] hover:border-[#E5484D]/40 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 transition-colors shadow-sm">
-                        {deletingId === b.id ? <span className="text-xs">...</span> : (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                            <path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
-                          </svg>
+                      <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
+                        <button type="button"
+                          onClick={() => setOpenMenuId(openMenuId === menuKey ? null : menuKey)}
+                          disabled={deletingId === b.id || duplicatingId === b.id}
+                          aria-label="Opciones del presupuesto"
+                          className="flex items-center justify-center w-12 h-full bg-white dark:bg-[#1B2A3A] rounded-[12px] border border-[#D5DCE4] dark:border-[#3A4A5C] text-[#A9B5C2] hover:text-[#0D1B2A] dark:hover:text-[#F4F6F9] hover:border-[#FF6A00]/50 disabled:opacity-40 transition-colors shadow-sm text-lg">
+                          {(deletingId === b.id || duplicatingId === b.id) ? <span className="text-xs">...</span> : '⋮'}
+                        </button>
+                        {openMenuId === menuKey && (
+                          <div className="absolute right-0 top-full mt-1 bg-white dark:bg-[#1B2A3A] border border-[#D5DCE4] dark:border-[#3A4A5C] rounded-[8px] shadow-lg z-20 min-w-[160px]">
+                            <button type="button"
+                              onClick={() => { setOpenMenuId(null); handleDuplicate(b.id) }}
+                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#0D1B2A] dark:text-[#F4F6F9] hover:bg-[#F4F6F9] dark:hover:bg-[#0D1B2A] transition-colors rounded-t-[8px]">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                              </svg>
+                              Duplicar
+                            </button>
+                            <button type="button"
+                              onClick={() => { setOpenMenuId(null); handleDelete(b.id) }}
+                              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#E5484D] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors rounded-b-[8px]">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                              </svg>
+                              Eliminar
+                            </button>
+                          </div>
                         )}
-                      </button>
+                      </div>
                     </li>
                   )
                 })}
@@ -742,6 +865,7 @@ export default function DashboardPage() {
                       })}
                       onRenameStart={() => { setRenamingFolderId(folder.id); setRenameName(folder.name); setOpenMenuId(null) }}
                       onRenameConfirm={() => renameFolder(folder.id, renameName || folder.name)}
+                      onRenameCancel={cancelRename}
                       onColorChange={color => changeColor(folder.id, color)}
                       onDeleteRequest={() => {
                         const count = budgets.filter(b => b.folder_id === folder.id).length
@@ -755,7 +879,7 @@ export default function DashboardPage() {
 
               {/* Presupuestos de carpetas expandidas */}
               {folders.filter(f => expandedFolderIds.has(f.id)).map(folder => {
-                const fBudgets = budgets.filter(b => b.folder_id === folder.id)
+                const fBudgets = displayBudgets.filter(b => b.folder_id === folder.id)
                 return (
                   <div key={folder.id} className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -768,7 +892,7 @@ export default function DashboardPage() {
                     ) : (
                       <ul className="space-y-2">
                         {fBudgets.map(b => (
-                          <DraggableBudgetRow key={b.id} budget={b} onDelete={handleDelete} deletingId={deletingId} />
+                          <DraggableBudgetRow key={b.id} budget={b} onDelete={handleDelete} onDuplicate={handleDuplicate} deletingId={deletingId} duplicatingId={duplicatingId} openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} />
                         ))}
                       </ul>
                     )}
@@ -785,7 +909,7 @@ export default function DashboardPage() {
                   {unfolderedBudgets.length > 0 ? (
                     <ul className="space-y-2">
                       {unfolderedBudgets.map(b => (
-                        <DraggableBudgetRow key={b.id} budget={b} onDelete={handleDelete} deletingId={deletingId} />
+                        <DraggableBudgetRow key={b.id} budget={b} onDelete={handleDelete} onDuplicate={handleDuplicate} deletingId={deletingId} duplicatingId={duplicatingId} openMenuId={openMenuId} setOpenMenuId={setOpenMenuId} />
                       ))}
                     </ul>
                   ) : folders.length > 0 ? (
@@ -802,7 +926,7 @@ export default function DashboardPage() {
             <DragOverlay>
               {activeBudget && (
                 <div className="bg-white dark:bg-[#1B2A3A] shadow-xl rounded-[12px] border border-[#FF6A00]/40 px-4 py-3 text-sm font-semibold text-[#0D1B2A] dark:text-[#F4F6F9] opacity-95 max-w-xs">
-                  ⠿ {activeBudget.client_name ?? `Presupuesto #${activeBudget.budget_number}`}
+                  ⠿ {activeBudget.nombre ?? activeBudget.client_name ?? `Presupuesto #${activeBudget.budget_number}`}
                 </div>
               )}
             </DragOverlay>

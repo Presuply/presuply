@@ -3,6 +3,7 @@ import { Syne, Montserrat } from "next/font/google";
 import "./globals.css";
 import ThemeProvider from "@/components/ThemeProvider";
 import CookieBanner from "@/components/CookieBanner";
+import RegisterSW from "@/components/RegisterSW";
 
 const syne = Syne({
   variable: "--font-syne",
@@ -21,10 +22,17 @@ const montserrat = Montserrat({
 export const metadata: Metadata = {
   title: "Presuply",
   description: "Genera presupuestos profesionales desde una foto",
+  manifest: "/manifest.json",
+  themeColor: "#FF6A00",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Presuply",
+  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
-    apple: "/apple-touch-icon.png",
+    apple: "/icons/icon-192.png",
   },
 };
 
@@ -39,12 +47,10 @@ export default function RootLayout({
       className={`${syne.variable} ${montserrat.variable} h-full`}
       suppressHydrationWarning
     >
-      <head>
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-      </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>{children}</ThemeProvider>
         <CookieBanner />
+        <RegisterSW />
       </body>
     </html>
   );

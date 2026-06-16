@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 
-const MODEL = 'claude-opus-4-7'
+const MODEL = 'claude-opus-4-8'
 const MODEL_SONNET = 'claude-sonnet-4-6'
 
 const SYSTEM_PROMPT = `Eres un experto maquetador de documentos profesionales especializados en presupuestos de construcción y reformas en España. Tu tarea es generar HTML completo y autocontenido con CSS inline que produzca un presupuesto profesional de máxima calidad visual.
@@ -181,7 +181,7 @@ function generateFallbackHtml(data: {
     totals.profitEnabled ? `<tr><td style="padding:4px 10px;font-size:9.5pt;">Beneficio industrial (${totals.profitRate}%)</td><td style="padding:4px 10px;font-size:9.5pt;text-align:right;">${fmt(totals.profit)} €</td></tr>` : '',
     totals.extras > 0 ? `<tr><td style="padding:4px 10px;font-size:9.5pt;">${totals.extrasDesc || 'Extras'}</td><td style="padding:4px 10px;font-size:9.5pt;text-align:right;">${fmt(totals.extras)} €</td></tr>` : '',
     `<tr style="border-top:1px solid #6b7280;"><td style="padding:5px 10px;font-size:9.5pt;font-weight:600;">Suma</td><td style="padding:5px 10px;font-size:9.5pt;text-align:right;font-weight:600;">${fmt(totals.baseImponible)} €</td></tr>`,
-    `<tr><td style="padding:4px 10px;font-size:9.5pt;">${totals.taxType} (${totals.taxRate}%)</td><td style="padding:4px 10px;font-size:9.5pt;text-align:right;">${fmt(totals.taxAmount)} €</td></tr>`,
+    `<tr><td style="padding:4px 10px;font-size:9.5pt;">${totals.taxRate === 0 ? 'Exento (0%)' : `${totals.taxType} (${totals.taxRate}%)`}</td><td style="padding:4px 10px;font-size:9.5pt;text-align:right;">${fmt(totals.taxAmount)} €</td></tr>`,
     `<tr style="border-top:2px solid #111827;"><td style="padding:6px 10px;font-size:11pt;font-weight:700;">TOTAL</td><td style="padding:6px 10px;font-size:11pt;text-align:right;font-weight:700;">${fmt(totals.total)} €</td></tr>`,
   ].filter(Boolean).join('')
 

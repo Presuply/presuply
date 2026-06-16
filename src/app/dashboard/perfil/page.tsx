@@ -43,6 +43,8 @@ export default function PerfilPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoDisplayUrl, setLogoDisplayUrl] = useState<string | null>(null)
   const [templateFile, setTemplateFile] = useState<File | null>(null)
+  const [analyzingTemplate, setAnalyzingTemplate] = useState(false)
+  const [templateSchemaReady, setTemplateSchemaReady] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -88,6 +90,7 @@ export default function PerfilPage() {
           logo_url: data.logo_url,
           template_url: data.template_url,
         })
+        if (data.template_schema) setTemplateSchemaReady(true)
         setPlanKey((data.plan_key ?? 'trial') as PlanKey)
         setSubscriptionStatus(data.subscription_status ?? 'trial')
         setBudgetsUsed(data.budgets_used ?? 0)
@@ -179,17 +182,64 @@ export default function PerfilPage() {
 
     if (updateError) {
       setError('Error al guardar el perfil. Inténtalo de nuevo.')
-    } else {
-      setProfile(prev => ({ ...prev, logo_url: newLogoUrl, template_url: newTemplateUrl }))
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      setSaving(false)
+      return
     }
 
+    setProfile(prev => ({ ...prev, logo_url: newLogoUrl, template_url: newTemplateUrl }))
+    setSaved(true)
+    setTimeout(() => setSaved(false), 3000)
     setSaving(false)
+
+    // Si se subió plantilla nueva, analizar en background sin bloquear el save
+    if (templateFile && newTemplateUrl) {
+      handleAnalyzeTemplate(newTemplateUrl)
+    }
+  }
+
+  async function handleAnalyzeTemplate(templateUrl: string) {
+    setAnalyzingTemplate(true)
+    setTemplateSchemaReady(false)
+    try {
+      const res = await fetch('/api/analyze-template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templateUrl }),
+      })
+      if (res.ok) setTemplateSchemaReady(true)
+    } catch {
+      // Error silencioso — el badge simplemente no aparece
+    } finally {
+      setAnalyzingTemplate(false)
+    }
   }
 
   function update(field: keyof ProfileForm, value: string) {
     setProfile(prev => ({ ...prev, [field]: value }))
+  }
+
+  async function handleDeleteLogo() {
+    if (!userId || !profile.logo_url) return
+    const supabase = createClient()
+    await supabase.storage.from('logos').remove([profile.logo_url])
+    const { error } = await supabase.from('profiles').update({ logo_url: null }).eq('id', userId)
+    if (error) { console.error('Error al eliminar el logo:', error); return }
+    setProfile(prev => ({ ...prev, logo_url: null }))
+    setLogoDisplayUrl(null)
+  }
+
+  async function handleDeleteTemplate() {
+    if (!userId || !profile.template_url) return
+    if (!confirm('¿Eliminar la plantilla? Se perderá el esquema de estilo configurado.')) return
+    const supabase = createClient()
+    await supabase.storage.from('logos').remove([profile.template_url])
+    const { error } = await supabase
+      .from('profiles')
+      .update({ template_url: null, template_schema: null })
+      .eq('id', userId)
+    if (error) { console.error('Error al eliminar la plantilla:', error); return }
+    setProfile(prev => ({ ...prev, template_url: null }))
+    setTemplateSchemaReady(false)
   }
 
   // Cargar equipo cuando el plan lo permite
@@ -278,7 +328,7 @@ export default function PerfilPage() {
 
   // Nombre del archivo de plantilla para mostrar al usuario
   const { activeId: tooltipId, markSeen, skipAll: skipTour } =
-    usePageTooltips(['perf_sub', 'perf_team'])
+    usePageTooltips(['perf_sub', 'perf_team', 'perf_template'])
 
   const templateDisplayName = templateFile?.name
     ?? (profile.template_url ? profile.template_url.split('/').pop() : null)
@@ -321,9 +371,17 @@ export default function PerfilPage() {
               </div>
             )}
             <div className="space-y-1">
-              <label htmlFor="logo" className={fileBtn}>
-                {logoDisplayUrl ? 'Cambiar logo' : 'Subir logo'}
-              </label>
+              <div className="flex items-center gap-3">
+                <label htmlFor="logo" className={fileBtn}>
+                  {logoDisplayUrl ? 'Cambiar logo' : 'Subir logo'}
+                </label>
+                {profile.logo_url && (
+                  <button type="button" onClick={handleDeleteLogo}
+                    className="text-xs text-[#E5484D] hover:underline transition-colors">
+                    Eliminar logo
+                  </button>
+                )}
+              </div>
               <input id="logo" type="file" accept="image/*" onChange={handleLogoChange} className="sr-only" />
               <p className="text-xs text-[#A9B5C2]">PNG, JPG o SVG. Se verá en el PDF.</p>
             </div>
@@ -332,10 +390,47 @@ export default function PerfilPage() {
 
         {/* Plantilla */}
         <section className={`${sec} !space-y-3`}>
-          <h2 className={secTitle}>Plantilla de presupuesto</h2>
+          <div className="relative inline-block">
+            <h2 className={secTitle}>Plantilla de presupuesto</h2>
+            <Tooltip
+              content="Sube una plantilla de referencia y la IA aprenderá tu estilo para generar siempre presupuestos consistentes"
+              placement="right"
+              isActive={tooltipId === 'perf_template'}
+              onDismiss={() => markSeen('perf_template')}
+              onSkipAll={skipTour}
+            />
+          </div>
           <p className="text-xs text-[#6B7B8C] dark:text-[#A9B5C2]">
-            Sube una foto o PDF de tu presupuesto actual. Al generar el PDF, Claude imitará su estructura con los nuevos datos.
+            Sube una foto o PDF de tu presupuesto actual. La IA analizará tu estilo y lo aplicará a todas las extracciones futuras.
           </p>
+
+          {/* Badge de estado del análisis */}
+          {analyzingTemplate && (
+            <div className="flex items-center gap-2 rounded-[8px] bg-orange-50 dark:bg-orange-900/15 border border-[#FF6A00]/30 px-3 py-2">
+              <svg className="animate-spin w-3.5 h-3.5 text-[#FF6A00] shrink-0" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              <span className="text-xs text-[#FF6A00] font-medium">Analizando plantilla con IA...</span>
+            </div>
+          )}
+          {templateSchemaReady && !analyzingTemplate && (
+            <div className="flex items-center justify-between gap-3 rounded-[8px] bg-green-50 dark:bg-green-900/15 border border-[#1FB57A]/30 px-3 py-2">
+              <span className="text-xs text-[#1FB57A] font-medium">
+                Plantilla configurada — tus presupuestos seguirán siempre el mismo esquema
+              </span>
+              {profile.template_url && (
+                <button
+                  type="button"
+                  onClick={() => handleAnalyzeTemplate(profile.template_url!)}
+                  className="shrink-0 text-xs text-[#6B7B8C] dark:text-[#A9B5C2] hover:text-[#FF6A00] transition-colors whitespace-nowrap"
+                >
+                  Reanalizar
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-3">
             <label htmlFor="template" className={`${fileBtn} shrink-0`}>
               {templateDisplayName ? 'Cambiar plantilla' : 'Subir plantilla'}
@@ -348,6 +443,12 @@ export default function PerfilPage() {
           </div>
           {!templateDisplayName && (
             <p className="text-xs text-[#A9B5C2]">JPG, PNG o PDF. Si no subes plantilla, se usará una plantilla estándar.</p>
+          )}
+          {profile.template_url && (
+            <button type="button" onClick={handleDeleteTemplate}
+              className="text-xs text-[#E5484D] hover:underline transition-colors">
+              Eliminar plantilla
+            </button>
           )}
         </section>
 
@@ -444,7 +545,7 @@ export default function PerfilPage() {
               <div className="relative inline-block">
                 <h2 className={secTitle}>Mi suscripción</h2>
                 <Tooltip
-                  content="Gestiona tu plan o cancela cuando quieras"
+                  content="Gestiona tu plan, cancela o cambia de suscripción cuando quieras"
                   placement="right"
                   isActive={tooltipId === 'perf_sub'}
                   onDismiss={() => markSeen('perf_sub')}

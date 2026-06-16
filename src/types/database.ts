@@ -1,4 +1,4 @@
-export type BudgetStatus = 'draft' | 'sent'
+export type BudgetStatus = 'borrador' | 'enviado' | 'aceptado' | 'rechazado' | 'en_revision'
 export type Confidence = 'alta' | 'media' | 'baja'
 
 export interface Profile {
@@ -14,6 +14,7 @@ export interface Profile {
   iban: string | null
   invoice_prefix: string | null
   template_url: string | null
+  template_schema: Record<string, unknown> | null
   stripe_customer_id: string | null
   stripe_subscription_id: string | null
   subscription_status: string
@@ -47,6 +48,8 @@ export interface Budget {
   total: number
   issued_date: string
   invoice_number: string | null
+  title: string | null
+  nombre: string | null
   pdf_url: string | null
   notes: string | null
   valid_days: number | null
@@ -76,6 +79,8 @@ export interface LineItem {
   total: number
   confidence: Confidence | null
   position: number
+  descripcion_extendida: string | null
+  titulo_partida: string | null
   created_at: string
 }
 

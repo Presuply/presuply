@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sin conexión — Presuply</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0D1B2A;
+      font-family: Arial, Helvetica, sans-serif;
+      padding: 24px;
+      text-align: center;
+    }
+    .logo {
+      margin-bottom: 32px;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #F4F6F9;
+      margin-bottom: 12px;
+      letter-spacing: -0.3px;
+    }
+    p {
+      font-size: 15px;
+      line-height: 1.65;
+      color: #A9B5C2;
+      max-width: 320px;
+      margin-bottom: 36px;
+    }
+    button {
+      background: #FF6A00;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      padding: 14px 32px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: #FF9248; }
+    button:active { background: #e05a00; }
+  </style>
+</head>
+<body>
+  <div class="logo">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 163.4 160.17" width="72" height="72">
+      <path fill="#0f1b2a" d="M129.7,0H32.9C14.8,0,.01,16.25.01,33.83v92.8c-.01,17.84,14.62,33.49,32.81,33.5l96.57.04c18.25,0,33.93-15.02,33.94-32.93l.06-93.21C163.41,15.91,148.1,0,129.7,0z"/>
+      <path fill="#ed6a1d" d="M77.12,84.62c2.47-2.6,5.41-4.32,8.71-4.36l13.34-.17c11.09-.14,19.27-9.93,19.16-20.61-.1-10.61-8.34-20.03-19.36-20.33-7.4-.2-14.48-.26-21.79.05-12.48.52-22.04,10.59-22.2,22.97v40.31s-17.86,18.09-17.86,18.09l-.06-57.86c-.02-21.52,16.83-39.12,38.36-40.54,8.79-.58,17.36-.62,26.03.08,18.87,1.52,32.8,16.41,34.08,34.96,1.37,19.87-12.52,37.32-32.4,39.69-4.7.56-9.17.25-13.94.26-1.57,0-2.86.67-3.93,1.79l-32.73,34.22c-.81.85-2.01,1.05-2.81.29l-9.92-9.44,37.31-39.39z"/>
+      <path fill="#ed6a1d" d="M47.35,136.53c-4.1,1.6-7.51,2.69-12.16,3.7.78-4.8,1.46-8.15,2.52-12.7l9.63,9z"/>
+    </svg>
+  </div>
+  <h1>Sin conexión</h1>
+  <p>Presuply necesita conexión a internet para funcionar. Por favor, verifica tu conexión y vuelve a intentarlo.</p>
+  <button onclick="window.location.reload()">Reintentar</button>
+</body>
+</html>

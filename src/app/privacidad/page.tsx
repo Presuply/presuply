@@ -95,7 +95,7 @@ export default function PrivacidadPage() {
             <ul className={ulClass}>
               <li>Supabase, Inc. (Estados Unidos): infraestructura de base de datos y autenticación.</li>
               <li>Vercel, Inc. (Estados Unidos): alojamiento de la Aplicación.</li>
-              <li>Anthropic, PBC (Estados Unidos): proveedor de modelos de inteligencia artificial («Claude») empleados para el procesamiento de los contenidos del Usuario.</li>
+              <li>Anthropic, PBC (Estados Unidos): proveedor de modelos de inteligencia artificial empleados para el procesamiento de los contenidos del Usuario.</li>
               <li>Stripe Payments Europe, Ltd. (Irlanda) y filiales: tramitación de los pagos.</li>
               <li>Proveedores de envío de correo electrónico transaccional, herramientas de analítica web y soporte técnico, en su caso.</li>
             </ul>
